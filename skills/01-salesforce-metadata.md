@@ -1,5 +1,24 @@
 # Salesforce Metadata & SOQL
 
+## STOP — Read this first
+
+**The following sObjects will ERROR if you query them via standard SOQL (`query_salesforce`).
+You MUST use the `query_tooling` tool for these:**
+
+- `ValidationRule` — TOOLING API ONLY
+- `WorkflowRule` — TOOLING API ONLY
+- `CustomField` — TOOLING API ONLY
+- `ApexClass` — TOOLING API ONLY
+- `ApexTrigger` — TOOLING API ONLY
+- `FlowDefinition` — TOOLING API ONLY
+- `Flow` — TOOLING API ONLY
+- `LightningComponentBundle` — TOOLING API ONLY
+- `AssignmentRule` — TOOLING API ONLY
+
+Querying any of these via `query_salesforce` returns: `sObject type 'X' is not supported.`
+
+**Use `query_salesforce` (standard SOQL) for:** data objects (Account, Contact, Opportunity, Case, etc.), `FlowDefinitionView`, `FlowVersionView`, `User`, `PermissionSet`, `PermissionSetAssignment`, `ObjectPermissions`, `FieldPermissions`, `UserRole`.
+
 ## When to use which tool
 
 | Question type | Tool | Why |
@@ -73,11 +92,47 @@ ORDER BY COUNT(Id) DESC
 LIMIT 50
 ```
 
+## SOQL vs Tooling API — what lives where
+
+**This is critical. Using the wrong API wastes turns and causes errors.**
+
+### Queryable via standard SOQL (`query` tool)
+| sObject | Key fields | Use for |
+|---------|-----------|---------|
+| `FlowDefinitionView` | `ApiName`, `Label`, `ProcessType`, `TriggerType`, `IsActive` | Listing flows, checking if active |
+| `FlowVersionView` | `FlowDefinitionViewId`, `MasterLabel`, `ProcessType`, `Status`, `VersionNumber` | Flow version details |
+| `User` | `Name`, `Email`, `Profile.Name`, `UserRole.Name`, `IsActive` | User lookups |
+| `PermissionSet` | `Name`, `Label`, `IsOwnedByProfile` | Listing permission sets |
+| `PermissionSetAssignment` | `AssigneeId`, `PermissionSetId` | Who has what permission set |
+| `ObjectPermissions` | `SobjectType`, `PermissionsRead/Edit/Create/Delete` | Object-level access |
+| `FieldPermissions` | `SobjectType`, `Field`, `PermissionsRead/Edit` | Field-level security |
+| `UserRole` | `Name`, `ParentRoleId` | Role hierarchy |
+
+### Queryable via Tooling API only (`query_tooling` tool)
+| sObject | Key fields | Use for |
+|---------|-----------|---------|
+| `ValidationRule` | `Active`, `ErrorConditionFormula`, `ErrorMessage`, `EntityDefinition.QualifiedApiName` | Validation rules |
+| `WorkflowRule` | `Name`, `TableEnumOrId` | Legacy workflow rules — NOT in standard SOQL |
+| `FlowDefinition` | `DeveloperName`, `ActiveVersionId`, `LatestVersionId` | Flow metadata (prefer FlowDefinitionView for listing) |
+| `Flow` | (metadata) | NOT queryable via standard SOQL at all |
+| `CustomField` | `DeveloperName`, `TableEnumOrId`, `DataType` | Custom field definitions |
+| `ApexClass` | `Name`, `Body`, `Status`, `ApiVersion` | Apex class metadata + source code |
+| `ApexTrigger` | `Name`, `Body`, `TableEnumOrId`, `Status` | Trigger metadata + source code |
+| `LightningComponentBundle` | `DeveloperName`, `MasterLabel`, `ApiVersion` | LWC bundles — Tooling API only |
+| `AssignmentRule` | `Name`, `SobjectType`, `Active` | Lead/case assignment rules |
+
+**Important notes:**
+- `ApexClass.Body` and `ApexTrigger.Body` contain the full source code — only available via Tooling API, only in dev/sandbox orgs
+- `WorkflowRule` is ONLY available via Tooling API — querying it via standard SOQL will fail
+- `LightningComponentBundle` is ONLY available via Tooling API
+- For listing flows, prefer `FlowDefinitionView` (standard SOQL) over `FlowDefinition` (Tooling) — it has friendlier fields like `IsActive`
+
 ## Tooling API reference
 
 Use `query_tooling` for metadata that isn't accessible via standard SOQL.
 
-### ValidationRule
+### ValidationRule ← TOOLING API ONLY
+Use tool: **`query_tooling`** (NOT `query_salesforce` — will error)
 ```sql
 SELECT Id, EntityDefinition.QualifiedApiName, Active, Description,
        ErrorConditionFormula, ErrorMessage
@@ -87,7 +142,8 @@ WHERE EntityDefinition.QualifiedApiName = 'Opportunity'
 ```
 Key fields: `Active`, `Description`, `ErrorConditionFormula`, `ErrorMessage`, `ErrorDisplayField`
 
-### WorkflowRule
+### WorkflowRule ← TOOLING API ONLY
+Use tool: **`query_tooling`** (NOT `query_salesforce` — will error)
 ```sql
 SELECT Id, Name, TableEnumOrId
 FROM WorkflowRule
@@ -95,22 +151,26 @@ WHERE TableEnumOrId = 'Case'
 ```
 Note: Legacy automation. If a user asks about "automation on X", check both WorkflowRules and Flows.
 
-### FlowDefinition
+### FlowDefinition ← TOOLING API ONLY
+Use tool: **`query_tooling`** (NOT `query_salesforce` — will error)
 ```sql
 SELECT DeveloperName, ActiveVersionId, LatestVersionId, Description
 FROM FlowDefinition
 WHERE DeveloperName LIKE '%Lead%'
 ```
 To check if a Flow is active, compare `ActiveVersionId` to `LatestVersionId`.
+Prefer `FlowDefinitionView` via standard SOQL for listing flows — it has `IsActive` directly.
 
-### CustomField
+### CustomField ← TOOLING API ONLY
+Use tool: **`query_tooling`** (NOT `query_salesforce` — will error)
 ```sql
 SELECT Id, DeveloperName, TableEnumOrId, DataType, FullName
 FROM CustomField
 WHERE TableEnumOrId = 'Account'
 ```
 
-### ApexClass
+### ApexClass ← TOOLING API ONLY
+Use tool: **`query_tooling`** (NOT `query_salesforce` — will error)
 ```sql
 SELECT Id, Name, Status, ApiVersion, LengthWithoutComments
 FROM ApexClass
@@ -119,21 +179,34 @@ ORDER BY Name
 ```
 Note: This gives metadata only. Use the dedicated `get_apex_class` tool to view source code (dev/sandbox orgs only).
 
-### ApexTrigger
+### ApexTrigger ← TOOLING API ONLY
+Use tool: **`query_tooling`** (NOT `query_salesforce` — will error)
 ```sql
-SELECT Id, Name, TableEnumOrId, Status, ApiVersion
+SELECT Id, Name, Body, TableEnumOrId, Status, ApiVersion
 FROM ApexTrigger
 WHERE TableEnumOrId = 'Account'
 ```
+Note: `Body` field contains the full trigger source code (dev/sandbox orgs only).
 
-### AssignmentRule
+### LightningComponentBundle ← TOOLING API ONLY
+Use tool: **`query_tooling`** (NOT `query_salesforce` — will error)
+```sql
+SELECT Id, DeveloperName, MasterLabel, ApiVersion
+FROM LightningComponentBundle
+ORDER BY DeveloperName
+LIMIT 200
+```
+
+### AssignmentRule ← TOOLING API ONLY
+Use tool: **`query_tooling`** (NOT `query_salesforce` — will error)
 ```sql
 SELECT Id, Name, SobjectType, Active
 FROM AssignmentRule
 WHERE SobjectType = 'Lead'
 ```
 
-### PermissionSet
+### PermissionSet ← standard SOQL
+Use tool: **`query_salesforce`**
 ```sql
 SELECT Id, Name, Label, IsOwnedByProfile, Description
 FROM PermissionSet
@@ -144,12 +217,13 @@ WHERE IsOwnedByProfile = false
 
 ### "What automation exists on [Object]?"
 Run these queries and combine the results:
-1. Validation rules: `SELECT ... FROM ValidationRule WHERE EntityDefinition.QualifiedApiName = '[Object]'`
-2. Workflow rules: `SELECT ... FROM WorkflowRule WHERE TableEnumOrId = '[Object]'`
-3. Flows: `SELECT ... FROM FlowDefinition` (then filter by relevance)
-4. Apex triggers: `SELECT ... FROM ApexTrigger WHERE TableEnumOrId = '[Object]'`
+1. Validation rules — **use `query_tooling`**: `SELECT ... FROM ValidationRule WHERE EntityDefinition.QualifiedApiName = '[Object]'`
+2. Workflow rules — **use `query_tooling`**: `SELECT ... FROM WorkflowRule WHERE TableEnumOrId = '[Object]'`
+3. Flows — **use `query_salesforce`**: `SELECT ApiName, Label, ProcessType, TriggerType, IsActive FROM FlowDefinitionView WHERE IsActive = true`
+4. Apex triggers — **use `query_tooling`**: `SELECT ... FROM ApexTrigger WHERE TableEnumOrId = '[Object]'`
 
 ### "What fields were recently added?"
+**Use `query_tooling`** (CustomField is Tooling API only):
 ```sql
 SELECT DeveloperName, TableEnumOrId, DataType, CreatedDate
 FROM CustomField

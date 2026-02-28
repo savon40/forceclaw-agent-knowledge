@@ -19,16 +19,34 @@
 
 ## Querying Flows
 
-### List all Flows
+### List all Flows (standard SOQL — preferred)
+```sql
+SELECT ApiName, Label, ProcessType, TriggerType, IsActive
+FROM FlowDefinitionView
+ORDER BY Label
+LIMIT 200
+```
+Use `FlowDefinitionView` via the standard `query` tool — it has the `IsActive` field directly.
+
+### Get Flow version details
+```sql
+SELECT MasterLabel, ProcessType, Status, VersionNumber
+FROM FlowVersionView
+WHERE FlowDefinitionViewId = '[ID from FlowDefinitionView]'
+ORDER BY VersionNumber DESC
+LIMIT 10
+```
+
+### List Flows via Tooling API (alternative)
 ```sql
 SELECT DeveloperName, ActiveVersionId, LatestVersionId, Description
 FROM FlowDefinition
 ORDER BY DeveloperName
 LIMIT 200
 ```
-
-### Check Flow status
 A Flow is **active** when `ActiveVersionId` is not null. It's on the **latest version** when `ActiveVersionId = LatestVersionId`.
+
+**Important:** The `Flow` sObject is NOT queryable via standard SOQL — only via Tooling API.
 
 ## Future capabilities
 
