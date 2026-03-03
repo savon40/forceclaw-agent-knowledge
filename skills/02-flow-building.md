@@ -19,34 +19,110 @@
 | **Scheduled Flow** | `AutoLaunchedFlow` | `Scheduled` | Runs on a schedule against a set of records |
 | **Platform Event-Triggered** | `AutoLaunchedFlow` | `PlatformEvent` | Runs when a platform event is published |
 
-## Querying Flows
+## Querying flow metadata — STOP and read this before querying
 
-### List all Flows (standard SOQL — preferred)
+There are 4 different flow-related objects and they have DIFFERENT fields. Using the wrong field on the wrong object causes errors. **Always use the exact fields listed below.**
+
+### FlowDefinitionView — USE THIS FOR LISTING FLOWS
+**API:** Standard SOQL (`query_salesforce`). **NOT** Tooling API.
+This is the **best object for listing flows** because it has TriggerType, IsActive, and the trigger object label.
+
+**Available fields:**
+`Id`, `DurableId`, `ApiName`, `Label`, `Description`, `ProcessType`, `TriggerType`, `TriggerObjectOrEventId`, `TriggerObjectOrEventLabel`, `RecordTriggerType`, `IsActive`, `ActiveVersionId`, `LatestVersionId`, `ManageableState`, `NamespacePrefix`, `IsTemplate`, `RunInMode`, `SourceTemplate`
+
+**Example: List all record-triggered flows on Opportunity**
 ```sql
-SELECT ApiName, Label, ProcessType, TriggerType, IsActive
+SELECT ApiName, Label, ProcessType, TriggerType, RecordTriggerType,
+       TriggerObjectOrEventLabel, IsActive
 FROM FlowDefinitionView
+WHERE TriggerObjectOrEventLabel = 'Opportunity'
+  AND IsActive = true
 ORDER BY Label
 LIMIT 200
 ```
-Use `FlowDefinitionView` via the standard `query` tool — it has the `IsActive` field directly.
 
-### Get Flow version details
+**Example: List all active flows by type**
 ```sql
-SELECT MasterLabel, ProcessType, Status, VersionNumber
+SELECT ApiName, Label, ProcessType, TriggerType, TriggerObjectOrEventLabel, IsActive
+FROM FlowDefinitionView
+WHERE IsActive = true
+ORDER BY Label
+LIMIT 200
+```
+
+**TriggerType values:** `RecordAfterSave`, `RecordBeforeSave`, `RecordBeforeDelete`, `Scheduled`, `PlatformEvent`
+**RecordTriggerType values:** `Create`, `Update`, `CreateAndUpdate`, `Delete`
+
+### FlowVersionView — for version history
+**API:** Standard SOQL (`query_salesforce`). **NOT** Tooling API.
+
+**Available fields:**
+`Id`, `DurableId`, `FlowDefinitionViewId`, `Label`, `Description`, `Status`, `ProcessType`, `VersionNumber`, `ApiVersion`, `ApiVersionRuntime`, `RunInMode`, `IsTemplate`, `IsSwaddled`
+
+**Example: Get version history for a flow**
+```sql
+SELECT Label, Status, ProcessType, VersionNumber, ApiVersion
 FROM FlowVersionView
 WHERE FlowDefinitionViewId = '[ID from FlowDefinitionView]'
 ORDER BY VersionNumber DESC
 LIMIT 10
 ```
 
-### List Flows via Tooling API (alternative)
+### FlowDefinition — Tooling API only (limited fields)
+**API:** Tooling API (`query_tooling`). Will error via standard SOQL.
+Use this to look up the DeveloperName or check active version. Prefer FlowDefinitionView for listing.
+
+**Available fields:**
+`Id`, `DeveloperName`, `MasterLabel`, `ActiveVersionId`, `LatestVersionId`, `Description`, `NamespacePrefix`, `ManageableState`
+
+**Does NOT have:** `ProcessType`, `TriggerType`, `Status`, `VersionNumber`, `IsActive`, `TriggerObjectOrEventLabel`
+
+**Example:**
 ```sql
 SELECT DeveloperName, ActiveVersionId, LatestVersionId, Description
 FROM FlowDefinition
 ORDER BY DeveloperName
 LIMIT 200
 ```
-A Flow is **active** when `ActiveVersionId` is not null. It's on the **latest version** when `ActiveVersionId = LatestVersionId`.
+A Flow is **active** when `ActiveVersionId` is not null.
+
+### Flow — Tooling API only (flow version metadata)
+**API:** Tooling API (`query_tooling`). Will error via standard SOQL.
+Represents a specific flow VERSION. Use this to read full flow metadata or to filter by ProcessType/Status.
+
+**Available fields:**
+`Id`, `DefinitionId`, `Definition.DeveloperName`, `MasterLabel`, `ProcessType`, `Status`, `VersionNumber`, `Description`, `ApiVersion`, `FullName` (not filterable), `Metadata` (not filterable — returns full flow definition JSON), `CreatedDate`, `CreatedById`, `LastModifiedDate`, `LastModifiedById`
+
+**Does NOT have:** `RecordTriggerType`, `TriggerType`, `TriggerOrder`, `TriggerObjectOrEvent`, `TriggerObjectOrEventLabel`
+
+**Example: Get active flow versions**
+```sql
+SELECT Id, Definition.DeveloperName, MasterLabel, ProcessType, Status, VersionNumber
+FROM Flow
+WHERE Status = 'Active'
+ORDER BY MasterLabel
+LIMIT 200
+```
+
+**Example: Read full metadata for a specific flow**
+```sql
+SELECT Id, Metadata FROM Flow WHERE Definition.DeveloperName = 'My_Flow_Name'
+```
+
+### Quick reference — which field is on which object
+
+| Field | FlowDefinitionView | FlowVersionView | FlowDefinition | Flow |
+|-------|:-:|:-:|:-:|:-:|
+| TriggerType | YES | no | no | no |
+| RecordTriggerType | YES | no | no | no |
+| TriggerObjectOrEventLabel | YES | no | no | no |
+| IsActive | YES | no | no | no |
+| ProcessType | YES | YES | no | YES |
+| Status | no | YES | no | YES |
+| VersionNumber | no | YES | no | YES |
+| DeveloperName | no (use ApiName) | no | YES | no |
+| ActiveVersionId | YES | no | YES | no |
+| Metadata (full JSON) | no | no | no | YES |
 
 ## Building Flows
 

@@ -99,8 +99,8 @@ LIMIT 50
 ### Queryable via standard SOQL (`query` tool)
 | sObject | Key fields | Use for |
 |---------|-----------|---------|
-| `FlowDefinitionView` | `ApiName`, `Label`, `ProcessType`, `TriggerType`, `IsActive` | Listing flows, checking if active |
-| `FlowVersionView` | `FlowDefinitionViewId`, `MasterLabel`, `ProcessType`, `Status`, `VersionNumber` | Flow version details |
+| `FlowDefinitionView` | `ApiName`, `Label`, `ProcessType`, `TriggerType`, `RecordTriggerType`, `TriggerObjectOrEventLabel`, `IsActive`, `ActiveVersionId` | Listing flows, checking if active, finding flows by trigger object |
+| `FlowVersionView` | `FlowDefinitionViewId`, `Label`, `ProcessType`, `Status`, `VersionNumber`, `ApiVersion` | Flow version details |
 | `User` | `Name`, `Email`, `Profile.Name`, `UserRole.Name`, `IsActive` | User lookups |
 | `PermissionSet` | `Name`, `Label`, `IsOwnedByProfile` | Listing permission sets |
 | `PermissionSetAssignment` | `AssigneeId`, `PermissionSetId` | Who has what permission set |
@@ -113,8 +113,8 @@ LIMIT 50
 |---------|-----------|---------|
 | `ValidationRule` | `Active`, `ErrorConditionFormula`, `ErrorMessage`, `EntityDefinition.QualifiedApiName` | Validation rules |
 | `WorkflowRule` | `Name`, `TableEnumOrId` | Legacy workflow rules — NOT in standard SOQL |
-| `FlowDefinition` | `DeveloperName`, `ActiveVersionId`, `LatestVersionId` | Flow metadata (prefer FlowDefinitionView for listing) |
-| `Flow` | (metadata) | NOT queryable via standard SOQL at all |
+| `FlowDefinition` | `DeveloperName`, `MasterLabel`, `ActiveVersionId`, `LatestVersionId`, `Description` — does NOT have ProcessType, TriggerType, Status | Flow metadata (prefer FlowDefinitionView for listing) |
+| `Flow` | `DefinitionId`, `Definition.DeveloperName`, `MasterLabel`, `ProcessType`, `Status`, `VersionNumber`, `Metadata` — does NOT have TriggerType, RecordTriggerType, TriggerObjectOrEventLabel | Flow version metadata via Tooling API only |
 | `CustomField` | `DeveloperName`, `TableEnumOrId`, `DataType` | Custom field definitions |
 | `ApexClass` | `Name`, `Body`, `Status`, `ApiVersion` | Apex class metadata + source code |
 | `ApexTrigger` | `Name`, `Body`, `TableEnumOrId`, `Status` | Trigger metadata + source code |
@@ -153,13 +153,15 @@ Note: Legacy automation. If a user asks about "automation on X", check both Work
 
 ### FlowDefinition ← TOOLING API ONLY
 Use tool: **`query_tooling`** (NOT `query_salesforce` — will error)
+**Available fields:** `Id`, `DeveloperName`, `MasterLabel`, `ActiveVersionId`, `LatestVersionId`, `Description`, `NamespacePrefix`, `ManageableState`
+**Does NOT have:** `ProcessType`, `TriggerType`, `Status`, `VersionNumber`, `IsActive`, `TriggerObjectOrEventLabel`
 ```sql
-SELECT DeveloperName, ActiveVersionId, LatestVersionId, Description
+SELECT DeveloperName, MasterLabel, ActiveVersionId, LatestVersionId, Description
 FROM FlowDefinition
 WHERE DeveloperName LIKE '%Lead%'
 ```
-To check if a Flow is active, compare `ActiveVersionId` to `LatestVersionId`.
-Prefer `FlowDefinitionView` via standard SOQL for listing flows — it has `IsActive` directly.
+To check if a Flow is active: `ActiveVersionId` is not null.
+**Prefer `FlowDefinitionView` via standard SOQL for listing flows** — it has `IsActive`, `TriggerType`, `TriggerObjectOrEventLabel` directly. See `02-flow-building.md` for complete field reference.
 
 ### CustomField ← TOOLING API ONLY
 Use tool: **`query_tooling`** (NOT `query_salesforce` — will error)

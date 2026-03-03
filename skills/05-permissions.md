@@ -158,6 +158,37 @@ WHERE Name = 'Jane Smith'
 LIMIT 1
 ```
 
+## Writing permission sets (sandbox/dev orgs only)
+
+In sandbox and developer orgs, you can create and modify permission sets using the Metadata API tools.
+
+### Creating a permission set
+- Use `create_permission_set` with a DeveloperName (underscores, no spaces) and a label
+- Example: name `Sales_Data_Access`, label `Sales Data Access`
+- This creates an empty permission set — you then add object and field permissions separately
+
+### Adding object permissions
+- Use `update_permission_set_object_permissions` to set CRUD flags for a specific object
+- You must specify all four CRUD booleans: `allow_create`, `allow_read`, `allow_edit`, `allow_delete`
+- Optionally set `view_all_records` and `modify_all_records` (default false)
+- This uses a read-modify-write pattern — it reads the current PS, merges the change, then saves
+
+### Adding field-level security
+- Use `update_permission_set_field_permissions` to grant read/edit access to specific fields
+- The `field` parameter must be in `Object.FieldName` format (e.g. `Account.Industry`, `Custom__c.My_Field__c`)
+- Set `readable` and `editable` booleans
+- If editable is true, readable should also be true (you can't edit what you can't see)
+
+### Assigning/unassigning permission sets
+- Use `assign_permission_set` with the DeveloperName and a Salesforce User ID (18-char, starts with `005`)
+- If you don't have the User ID, query for it first: `SELECT Id, Name FROM User WHERE Name = '...'`
+- Use `unassign_permission_set` to remove the assignment
+- The tool checks for existing assignments to avoid duplicates
+
+### Important: Permission sets are additive
+- Permission sets can only **grant** access — they cannot revoke access granted by the profile or other permission sets
+- If a user has too much access, you need to check their profile and other permission sets — removing a PS only removes what that specific PS granted
+
 ## Tips for permission questions
 
 - When a user asks "who can see X", remember that access is **additive** — check profiles AND permission sets AND sharing rules
