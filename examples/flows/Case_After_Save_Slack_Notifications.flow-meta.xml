@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <actionCalls>
+        <description>AI Search Slack Message</description>
+        <name>AI_Search_Slack_Message</name>
+        <label>AI Search Slack Message</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <actionName>slackPostMessage</actionName>
+        <actionType>slackPostMessage</actionType>
+        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
+        <inputParameters>
+            <name>slackAppIdForToken</name>
+            <value>
+                <stringValue>A03269G3DNE</stringValue>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>slackWorkspaceIdForToken</name>
+            <value>
+                <stringValue>T044L3V9A</stringValue>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>slackConversationId</name>
+            <value>
+                <stringValue>C0931272YHX</stringValue>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>slackMessage</name>
+            <value>
+                <elementReference>AISearchSlackMessage</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>recordId</name>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </inputParameters>
+        <nameSegment>slackPostMessage</nameSegment>
+        <offset>0</offset>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </actionCalls>
+    <apiVersion>64.0</apiVersion>
+    <decisions>
+        <description>Check AI search is true</description>
+        <name>Check_AI_search_is_true</name>
+        <label>Check AI search is true</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsAISearch</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.AI_Search__c</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>AI_Search_Slack_Message</targetReference>
+            </connector>
+            <label>IsAISearch</label>
+        </rules>
+    </decisions>
+    <description>Case After Save Slack Notifications</description>
+    <environments>Default</environments>
+    <formulas>
+        <name>DomainUrl</name>
+        <dataType>String</dataType>
+        <expression>LEFT({!$Api.Partner_Server_URL_290}, FIND(&quot;/services&quot;, {!$Api.Partner_Server_URL_290}))</expression>
+    </formulas>
+    <interviewLabel>Case After Save Slack Notifications {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Case After Save Slack Notifications</label>
+    <processMetadataValues>
+        <name>BuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>CanvasMode</name>
+        <value>
+            <stringValue>AUTO_LAYOUT_CANVAS</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>OriginBuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processType>AutoLaunchedFlow</processType>
+    <start>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>AI_Search__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </filters>
+        <object>Case</object>
+        <recordTriggerType>Create</recordTriggerType>
+        <scheduledPaths>
+            <connector>
+                <targetReference>Check_AI_search_is_true</targetReference>
+            </connector>
+            <pathType>AsyncAfterCommit</pathType>
+        </scheduledPaths>
+        <triggerType>RecordAfterSave</triggerType>
+    </start>
+    <status>Active</status>
+    <textTemplates>
+        <description>AISearchSlackMessage</description>
+        <name>AISearchSlackMessage</name>
+        <isViewedAsPlainText>true</isViewedAsPlainText>
+        <text>Case Details:
+Account Name:  {!$Record.Account.Name}
+Submitted By: {!$Record.Submitted_By__c}
+Case Owner: {!$Record.Case_Owner_Name__c}
+Short Description: {!$Record.Short_Description_of_Growth_Idea__c}
+AI Search: {!$Record.AI_Search__c}
+Date/Time Opened: {!$Record.CreatedDate}
+Average Monthly Paid Media Spend : {!$Record.Average_Monthly_Paid_Media_Spend__c}
+If the client does not have SEO services with Wpromote do they have another SEO agency or in-house team?: {!$Record.SEO_Agency_or_In_House_Team__c}
+What are the client&apos;s development/implementation capabilities?: {!$Record.Development_Implementation_Capabilities__c}
+What are the client&apos;s content creation capabilities?: {!$Record.Content_Creation_Capabilities__c}
+Link to Case: {!DomainUrl}{!$Record.Id}</text>
+    </textTemplates>
+</Flow>

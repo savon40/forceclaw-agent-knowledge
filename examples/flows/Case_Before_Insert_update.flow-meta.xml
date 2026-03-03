@@ -1,0 +1,728 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>63.0</apiVersion>
+    <assignments>
+        <description>Assign Account director Email on Insert</description>
+        <name>Assign_Account_director_Email_on_Insert</name>
+        <label>Assign Account director Email on Insert</label>
+        <locationX>578</locationX>
+        <locationY>1343</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.Account_Director_Email__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_CID_matching_Account_on_insert.Group_Account_Director_Lookup__r.Email</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Check_Account_Service_to_Update_Case_Owner_on_Insert</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <description>Assign Category and department to subject on insert</description>
+        <name>Assign_Category_and_Department_to_subject_on_insert</name>
+        <label>Assign Category and Department to subject on insert</label>
+        <locationX>1007</locationX>
+        <locationY>395</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.Subject</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>CategoryAndDepartment</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Check_Idea_Status_field_has_changed_on_insert</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <description>Assign CIDAccount on insert</description>
+        <name>Assign_CIDAccount_on_insert</name>
+        <label>Assign CIDAccount on insert</label>
+        <locationX>446</locationX>
+        <locationY>1127</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.AccountId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_CID_matching_Account_on_insert.Id</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Check_Managing_Director_on_insert</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <description>Assign CIDAccount on update</description>
+        <name>Assign_CIDAccount_on_update</name>
+        <label>Assign CIDAccount on update</label>
+        <locationX>1810</locationX>
+        <locationY>1019</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.AccountId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_CID_matching_Account_on_update.Id</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Check_Account_Service_to_Update_Case_Owner_on_Update</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <description>Assign Client Service User as Case Owner on Insert</description>
+        <name>Assign_Client_Service_User_as_Case_Owner_on_Insert</name>
+        <label>Assign Client Service User as Case Owner on Insert</label>
+        <locationX>182</locationX>
+        <locationY>1643</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.OwnerId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_CID_matching_Account_on_insert.Client_Services_Lead_Lookup__c</elementReference>
+            </value>
+        </assignmentItems>
+    </assignments>
+    <assignments>
+        <description>Assign Client Service User as Case Owner on Update</description>
+        <name>Assign_Client_Service_User_as_Case_Owner_on_Update</name>
+        <label>Assign Client Service User as Case Owner on Update</label>
+        <locationX>1546</locationX>
+        <locationY>1235</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.OwnerId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_CID_matching_Account_on_insert.Client_Services_Lead_Lookup__c</elementReference>
+            </value>
+        </assignmentItems>
+    </assignments>
+    <assignments>
+        <description>Assign Current date/time based on idea status on update</description>
+        <name>Assign_Current_date_time_based_on_idea_status_on_update</name>
+        <label>Assign Current date/time based on idea status on update</label>
+        <locationX>2206</locationX>
+        <locationY>503</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.Last_Idea_Status_Update__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>CurrentDateTime</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Check_CID_field_on_update</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <description>Assign Group Account User as Case Owner on Insert</description>
+        <name>Assign_Group_Account_User_as_Case_Owner_on_Insert</name>
+        <label>Assign Group Account User as Case Owner on Insert</label>
+        <locationX>446</locationX>
+        <locationY>1643</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.OwnerId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_CID_matching_Account_on_insert.Group_Account_Director_Lookup__c</elementReference>
+            </value>
+        </assignmentItems>
+    </assignments>
+    <assignments>
+        <description>Assign Group Account User as Case Owner on Update</description>
+        <name>Assign_Group_Account_User_as_Case_Owner_on_Update</name>
+        <label>Assign Group Account User as Case Owner on Update</label>
+        <locationX>1810</locationX>
+        <locationY>1235</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.OwnerId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_CID_matching_Account_on_insert.Group_Account_Director_Lookup__c</elementReference>
+            </value>
+        </assignmentItems>
+    </assignments>
+    <assignments>
+        <description>Assign Managing and Account director Email on Insert</description>
+        <name>Assign_Managing_and_Account_director_Email_on_Insert</name>
+        <label>Assign Managing and Account director Email on Insert</label>
+        <locationX>50</locationX>
+        <locationY>1343</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.Managing_Director_Email__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_CID_matching_Account_on_insert.Managing_Director__r.Email</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>$Record.Account_Director_Email__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_CID_matching_Account_on_insert.Group_Account_Director_Lookup__r.Email</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Check_Account_Service_to_Update_Case_Owner_on_Insert</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <description>Assign Managing Email on Insert</description>
+        <name>Assign_Managing_Email_on_Insert</name>
+        <label>Assign Managing Email on Insert</label>
+        <locationX>314</locationX>
+        <locationY>1343</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.Managing_Director_Email__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_CID_matching_Account_on_insert.Managing_Director__r.Email</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Check_Account_Service_to_Update_Case_Owner_on_Insert</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <description>Current date/time based on idea status on insert</description>
+        <name>Current_date_time_based_on_idea_status_on_insert</name>
+        <label>Current date/time based on idea status on insert</label>
+        <locationX>875</locationX>
+        <locationY>611</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.Last_Idea_Status_Update__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>CurrentDateTime</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Check_CID_field_on_insert</targetReference>
+        </connector>
+    </assignments>
+    <decisions>
+        <description>Check Account Service to Update Case Owner on Insert</description>
+        <name>Check_Account_Service_to_Update_Case_Owner_on_Insert</name>
+        <label>Check Account Service to Update Case Owner on Insert</label>
+        <locationX>446</locationX>
+        <locationY>1535</locationY>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsClientServiceOnInsert</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_CID_matching_Account_on_insert.Client_Services_Lead_Lookup__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Assign_Client_Service_User_as_Case_Owner_on_Insert</targetReference>
+            </connector>
+            <label>IsClientServiceOnInsert</label>
+        </rules>
+        <rules>
+            <name>IsGroupAccountOnInsert</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_CID_matching_Account_on_insert.Group_Account_Director_Lookup__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Assign_Group_Account_User_as_Case_Owner_on_Insert</targetReference>
+            </connector>
+            <label>IsGroupAccountOnInsert</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check Account Service to Update Case Owner on Update</description>
+        <name>Check_Account_Service_to_Update_Case_Owner_on_Update</name>
+        <label>Check Account Service to Update Case Owner on Update</label>
+        <locationX>1810</locationX>
+        <locationY>1127</locationY>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsClientServiceOnUpdate</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_CID_matching_Account_on_insert.Client_Services_Lead_Lookup__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Assign_Client_Service_User_as_Case_Owner_on_Update</targetReference>
+            </connector>
+            <label>IsClientServiceOnUpdate</label>
+        </rules>
+        <rules>
+            <name>IsGroupAccountOnUpdate</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_CID_matching_Account_on_insert.Group_Account_Director_Lookup__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Assign_Group_Account_User_as_Case_Owner_on_Update</targetReference>
+            </connector>
+            <label>IsGroupAccountOnUpdate</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check Case Inserted / Updated</description>
+        <name>Check_Case_Inserted_Updated</name>
+        <label>Check Case Inserted / Updated</label>
+        <locationX>1672</locationX>
+        <locationY>287</locationY>
+        <defaultConnector>
+            <targetReference>Check_Idea_Status_field_has_changed_on_Update</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsInsert</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>IsNew</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Assign_Category_and_Department_to_subject_on_insert</targetReference>
+            </connector>
+            <label>IsInsert</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check CID account on insert</description>
+        <name>Check_CID_account_on_insert</name>
+        <label>Check CID account on insert</label>
+        <locationX>732</locationX>
+        <locationY>1019</locationY>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsCIDAccountonInsert</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_CID_matching_Account_on_insert</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Assign_CIDAccount_on_insert</targetReference>
+            </connector>
+            <label>IsCIDAccountonInsert</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check CID account on update</description>
+        <name>Check_CID_account_on_update</name>
+        <label>Check CID account on update</label>
+        <locationX>2074</locationX>
+        <locationY>911</locationY>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsCIDAccountOnUpdate</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_CID_matching_Account_on_update</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Assign_CIDAccount_on_update</targetReference>
+            </connector>
+            <label>IsCIDAccountOnUpdate</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check CID field on insert</description>
+        <name>Check_CID_field_on_insert</name>
+        <label>Check CID field on insert</label>
+        <locationX>1007</locationX>
+        <locationY>803</locationY>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsCIDonInsert</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.CID_copy_paste_from_Polaris__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_CID_matching_Account_on_insert</targetReference>
+            </connector>
+            <label>IsCIDonInsert</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check CID field on update</description>
+        <name>Check_CID_field_on_update</name>
+        <label>Check CID field on update</label>
+        <locationX>2338</locationX>
+        <locationY>695</locationY>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsCIDupdate</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.CID_copy_paste_from_Polaris__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.CID_copy_paste_from_Polaris__c</leftValueReference>
+                <operator>IsChanged</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_CID_matching_Account_on_update</targetReference>
+            </connector>
+            <label>IsCIDupdate</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check Idea Status field has changed on insert</description>
+        <name>Check_Idea_Status_field_has_changed_on_insert</name>
+        <label>Check Idea Status field has changed on insert</label>
+        <locationX>1007</locationX>
+        <locationY>503</locationY>
+        <defaultConnector>
+            <targetReference>Check_CID_field_on_insert</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsIdeaStatusOnInsert</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Status</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.Status</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Idea Under Review</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Current_date_time_based_on_idea_status_on_insert</targetReference>
+            </connector>
+            <label>IsIdeaStatusOnInsert</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check Idea Status field has changed on Update</description>
+        <name>Check_Idea_Status_field_has_changed_on_Update</name>
+        <label>Check Idea Status field has changed on Update</label>
+        <locationX>2338</locationX>
+        <locationY>395</locationY>
+        <defaultConnector>
+            <targetReference>Check_CID_field_on_update</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsIdeaStatusOnUpdate</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Status</leftValueReference>
+                <operator>IsChanged</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.Status</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Idea Under Review</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Assign_Current_date_time_based_on_idea_status_on_update</targetReference>
+            </connector>
+            <label>IsIdeaStatusOnUpdate</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check Managing Director on insert</description>
+        <name>Check_Managing_Director_on_insert</name>
+        <label>Check Managing Director on insert</label>
+        <locationX>446</locationX>
+        <locationY>1235</locationY>
+        <defaultConnector>
+            <targetReference>Check_Account_Service_to_Update_Case_Owner_on_Insert</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsManagingDirectorAndAccountDirector</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_CID_matching_Account_on_insert.Managing_Director__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>Get_CID_matching_Account_on_insert.Managing_Director__r.Email</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>Get_CID_matching_Account_on_insert.Group_Account_Director_Lookup__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>Get_CID_matching_Account_on_insert.Group_Account_Director_Lookup__r.Email</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Assign_Managing_and_Account_director_Email_on_Insert</targetReference>
+            </connector>
+            <label>IsManagingDirectorAndAccountDirector</label>
+        </rules>
+        <rules>
+            <name>IsManagingDirectorOnInsert</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_CID_matching_Account_on_insert.Managing_Director__c</leftValueReference>
+                <operator>EqualTo</operator>
+            </conditions>
+            <conditions>
+                <leftValueReference>Get_CID_matching_Account_on_insert.Managing_Director__r.Email</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Assign_Managing_Email_on_Insert</targetReference>
+            </connector>
+            <label>IsManagingDirectorOnInsert</label>
+        </rules>
+        <rules>
+            <name>IsAccountDirectorOnInsert</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_CID_matching_Account_on_insert.Group_Account_Director_Lookup__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>Get_CID_matching_Account_on_insert.Group_Account_Director_Lookup__r.Email</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Assign_Account_director_Email_on_Insert</targetReference>
+            </connector>
+            <label>IsAccountDirectorOnInsert</label>
+        </rules>
+    </decisions>
+    <description>Case Before Insert/ update</description>
+    <environments>Default</environments>
+    <formulas>
+        <description>CategoryAndDepartment</description>
+        <name>CategoryAndDepartment</name>
+        <dataType>String</dataType>
+        <expression>IF(
+  ISBLANK({!FinalCategoryText}),
+  {!FinalDepartmentText},
+  IF(
+    ISBLANK({!FinalDepartmentText}),
+    {!FinalCategoryText},
+    {!FinalCategoryText} &amp; &apos; - &apos; &amp; {!FinalDepartmentText}
+  )
+)</expression>
+    </formulas>
+    <formulas>
+        <description>CategoryText</description>
+        <name>CategoryText</name>
+        <dataType>String</dataType>
+        <expression>IF({!$Record.AI_Search__c}, &apos;AI Search,&apos;, &apos;&apos;) &amp;
+IF({!$Record.AI_Max__c}, &apos;AI Max,&apos;, &apos;&apos;) &amp;
+IF({!$Record.Brandformance__c}, &apos;Brandformance,&apos;, &apos;&apos;) &amp;
+IF({!$Record.CaC__c}, &apos;CaC,&apos;, &apos;&apos;) &amp;
+IF({!$Record.Email_Evolution__c}, &apos;Email Evolution,&apos;, &apos;&apos;) &amp;
+IF({!$Record.One_Search__c}, &apos;One Search,&apos;, &apos;&apos;) &amp;
+IF({!$Record.Retail_Media__c}, &apos;Retail Media,&apos;, &apos;&apos;) &amp;
+IF({!$Record.Polarsis__c}, &apos;Polarsis,&apos;, &apos;&apos;) &amp;
+IF({!$Record.Partnership_Affiliate__c}, &apos;Partnership - Affiliate,&apos;, &apos;&apos;) &amp;
+IF({!$Record.Partnership_Amazon__c}, &apos;Partnership - Amazon,&apos;, &apos;&apos;) &amp;
+IF({!$Record.Partnership_Google__c}, &apos;Partnership - Google,&apos;, &apos;&apos;) &amp;
+IF({!$Record.Partnership_Meta__c}, &apos;Partnership - Meta,&apos;, &apos;&apos;) &amp;
+IF({!$Record.Partnership_MSFT__c}, &apos;Partnership - MSFT,&apos;, &apos;&apos;) &amp;
+IF({!$Record.Partnership_Snap__c}, &apos;Partnership - Snap,&apos;, &apos;&apos;) &amp;
+IF({!$Record.Partnership_The_Trade_Desk__c}, &apos;Partnership - The Trade Desk,&apos;, &apos;&apos;) &amp;
+IF({!$Record.Partnership_TikTok__c}, &apos;Partnership - TikTok,&apos;, &apos;&apos;) &amp;
+IF({!$Record.Partnership_Other__c}, &apos;Partnership - Other&apos;, &apos;&apos;) &amp;
+IF({!$Record.Category_Other__c}, &apos;Other,&apos;, &apos;&apos;)</expression>
+    </formulas>
+    <formulas>
+        <description>CurrentDateTime</description>
+        <name>CurrentDateTime</name>
+        <dataType>DateTime</dataType>
+        <expression>NOW()</expression>
+    </formulas>
+    <formulas>
+        <description>DepartmentText</description>
+        <name>DepartmentText</name>
+        <dataType>String</dataType>
+        <expression>IF({!$Record.Affiliate__c}, &apos;Affiliate, &apos;, &apos;&apos;) &amp;
+IF({!$Record.Amazon__c}, &apos;Amazon, &apos;, &apos;&apos;) &amp;
+IF({!$Record.Client_Services__c}, &apos;Client Services, &apos;, &apos;&apos;) &amp;
+IF({!$Record.Content_Marketing__c}, &apos;Content Marketing, &apos;, &apos;&apos;) &amp;
+IF({!$Record.Data_Strategy_Analytics__c}, &apos;Data Strategy &amp; Analytics, &apos;, &apos;&apos;) &amp;
+IF({!$Record.Digital_Experience__c}, &apos;Digital Experience, &apos;, &apos;&apos;) &amp;
+IF({!$Record.Earned_Management__c}, &apos;Earned Management, &apos;, &apos;&apos;) &amp;
+IF({!$Record.Email_Lifecycle_Marketing__c}, &apos;Email &amp; Lifecycle Marketing, &apos;, &apos;&apos;) &amp;
+IF({!$Record.Influencer__c}, &apos;Influencer, &apos;, &apos;&apos;) &amp;
+IF({!$Record.Paid_Management__c}, &apos;Paid Management, &apos;, &apos;&apos;) &amp;
+IF({!$Record.Paid_Search__c}, &apos;Paid Search, &apos;, &apos;&apos;) &amp;
+IF({!$Record.Performance_Creative__c}, &apos;Performance Creative, &apos;, &apos;&apos;) &amp;
+IF({!$Record.Programmatic__c}, &apos;Programmatic, &apos;, &apos;&apos;) &amp;
+IF({!$Record.Project_Management__c}, &apos;Project Management, &apos;, &apos;&apos;) &amp;
+IF({!$Record.SEO__c}, &apos;SEO, &apos;, &apos;&apos;) &amp;
+IF({!$Record.Social__c}, &apos;Social, &apos;, &apos;&apos;) &amp;
+IF({!$Record.Strategy__c}, &apos;Strategy, &apos;, &apos;&apos;) &amp;
+IF({!$Record.Other__c}, &apos;Other, &apos;, &apos;&apos;)</expression>
+    </formulas>
+    <formulas>
+        <description>FinalCategoryText</description>
+        <name>FinalCategoryText</name>
+        <dataType>String</dataType>
+        <expression>IF(
+  RIGHT(TRIM({!CategoryText}), 1) = &apos;,&apos;,
+  LEFT(TRIM({!CategoryText}), LEN(TRIM({!CategoryText})) - 1),
+  TRIM({!CategoryText})
+)</expression>
+    </formulas>
+    <formulas>
+        <description>FinalDepartmentText</description>
+        <name>FinalDepartmentText</name>
+        <dataType>String</dataType>
+        <expression>IF(
+  RIGHT(TRIM({!DepartmentText}), 1) = &apos;,&apos;,
+  LEFT(TRIM({!DepartmentText}), LEN(TRIM({!DepartmentText})) - 1),
+  TRIM({!DepartmentText})
+)</expression>
+    </formulas>
+    <formulas>
+        <description>IsNew</description>
+        <name>IsNew</name>
+        <dataType>Boolean</dataType>
+        <expression>ISNEW()</expression>
+    </formulas>
+    <interviewLabel>Case Before Insert/ update {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Case Before Insert/ update</label>
+    <processMetadataValues>
+        <name>BuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>CanvasMode</name>
+        <value>
+            <stringValue>AUTO_LAYOUT_CANVAS</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>OriginBuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processType>AutoLaunchedFlow</processType>
+    <recordLookups>
+        <description>Get CID matching Account on insert</description>
+        <name>Get_CID_matching_Account_on_insert</name>
+        <label>Get CID matching Account on insert</label>
+        <locationX>732</locationX>
+        <locationY>911</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Check_CID_account_on_insert</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Bixby_ID__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.CID_copy_paste_from_Polaris__c</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>Account</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <description>Get CID matching Account on update</description>
+        <name>Get_CID_matching_Account_on_update</name>
+        <label>Get CID matching Account on update</label>
+        <locationX>2074</locationX>
+        <locationY>803</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Check_CID_account_on_update</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Bixby_ID__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.CID_copy_paste_from_Polaris__c</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>Account</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <start>
+        <locationX>1546</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Check_Case_Inserted_Updated</targetReference>
+        </connector>
+        <object>Case</object>
+        <recordTriggerType>CreateAndUpdate</recordTriggerType>
+        <triggerType>RecordBeforeSave</triggerType>
+    </start>
+    <status>Draft</status>
+</Flow>
