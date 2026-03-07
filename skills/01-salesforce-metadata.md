@@ -111,7 +111,7 @@ LIMIT 50
 ### Queryable via Tooling API only (`query_tooling` tool)
 | sObject | Key fields | Use for |
 |---------|-----------|---------|
-| `ValidationRule` | `Active`, `ErrorConditionFormula`, `ErrorMessage`, `EntityDefinition.QualifiedApiName` | Validation rules |
+| `ValidationRule` | `ValidationName`, `Active`, `Description`, `ErrorMessage`, `EntityDefinition.QualifiedApiName` — `Metadata`/`FullName` single-row only (formula is inside `Metadata`) | Validation rules |
 | `WorkflowRule` | `Name`, `TableEnumOrId` | Legacy workflow rules — NOT in standard SOQL |
 | `FlowDefinition` | `DeveloperName`, `MasterLabel`, `ActiveVersionId`, `LatestVersionId`, `Description` — does NOT have ProcessType, TriggerType, Status | Flow metadata (prefer FlowDefinitionView for listing) |
 | `Flow` | `DefinitionId`, `Definition.DeveloperName`, `MasterLabel`, `ProcessType`, `Status`, `VersionNumber`, `Metadata` — does NOT have TriggerType, RecordTriggerType, TriggerObjectOrEventLabel | Flow version metadata via Tooling API only |
@@ -133,14 +133,45 @@ Use `query_tooling` for metadata that isn't accessible via standard SOQL.
 
 ### ValidationRule ← TOOLING API ONLY
 Use tool: **`query_tooling`** (NOT `query_salesforce` — will error)
+
+**Available fields:**
+| Field | Type | Notes |
+|-------|------|-------|
+| `Id` | id | Record ID |
+| `ValidationName` | string | API name of the validation rule |
+| `Active` | boolean | Whether the rule is active |
+| `Description` | string | Description |
+| `EntityDefinitionId` | string | ID of the parent entity |
+| `EntityDefinition.QualifiedApiName` | string | API name of the parent object (use in WHERE) |
+| ~~`ErrorConditionFormula`~~ | — | **DOES NOT EXIST** as a direct field. The formula is inside the `Metadata` compound field only. |
+| `ErrorMessage` | string | Error message shown to user |
+| `CreatedDate` | datetime | When the rule was created |
+| `CreatedById` | id | Who created it |
+| `LastModifiedDate` | datetime | Last modified date |
+| `LastModifiedById` | id | Who last modified it |
+| `ManageableState` | string | Package state (unmanaged, installed, etc.) |
+| `NamespacePrefix` | string | Namespace if from a package |
+| `Metadata` | complex | Full metadata (contains `errorConditionFormula`, `errorDisplayField`, `errorMessage`, `active`, `description`, `shouldEvaluateOnChange`, `urls`) — **can only be queried when result is exactly 1 row** (use LIMIT 1 + specific WHERE) |
+| `FullName` | string | Full API name — **same single-row restriction as Metadata** |
+
+**IMPORTANT:** `Metadata` and `FullName` fields cause an error if the query returns more than 1 row. When listing multiple rules, do NOT include `Metadata` or `FullName`. Query those fields only when fetching a single rule by name.
+
+**Listing all validation rules on an object (NO Metadata/FullName):**
 ```sql
-SELECT Id, EntityDefinition.QualifiedApiName, Active, Description,
-       ErrorConditionFormula, ErrorMessage
+SELECT Id, ValidationName, Active, Description, ErrorMessage
 FROM ValidationRule
 WHERE EntityDefinition.QualifiedApiName = 'Opportunity'
-  AND Active = true
+ORDER BY ValidationName
 ```
-Key fields: `Active`, `Description`, `ErrorConditionFormula`, `ErrorMessage`, `ErrorDisplayField`
+
+**Getting full details for a single rule (with Metadata):**
+```sql
+SELECT Id, ValidationName, Active, Description, ErrorMessage, Metadata
+FROM ValidationRule
+WHERE ValidationName = 'My_Rule_Name'
+  AND EntityDefinition.QualifiedApiName = 'Opportunity'
+LIMIT 1
+```
 
 ### WorkflowRule ← TOOLING API ONLY
 Use tool: **`query_tooling`** (NOT `query_salesforce` — will error)
