@@ -162,7 +162,76 @@ Should I go ahead?
 
 1. **Always describe what you'll do** before doing it
 2. **Always ask "Should I go ahead?"** and wait for confirmation
-3. **After completing**, summarize what was done
+3. **After completing**, summarize what was done and **include a direct link** to the created/updated component in Salesforce (see URL patterns below)
 4. **If something fails**, show the error, explain what went wrong, and offer to fix it
 5. **Think about side effects** — will this field be referenced by flows, validation rules, or Apex? Mention if relevant.
 6. **Think about what the admin would want** — FLS, layouts, history tracking, etc. Don't just create the bare minimum.
+
+---
+
+## Salesforce URL Patterns for Links
+
+After creating or updating any metadata, **always include a clickable link** so the user can go directly to it in Salesforce Setup. Use the instance URL from your org context.
+
+Replace `{BASE}` with the Salesforce instance URL (e.g., `https://myorg.my.salesforce.com`).
+
+### Records
+- Any record: `{BASE}/lightning/r/{ObjectApiName}/{RecordId}/view`
+- Example: `{BASE}/lightning/r/Opportunity/006xx000001abc/view`
+
+### Custom Fields
+- Field list on an object: `{BASE}/lightning/setup/ObjectManager/{ObjectApiName}/FieldsAndRelationships/view`
+- Specific field (by field ID): `{BASE}/lightning/setup/ObjectManager/{ObjectApiName}/FieldsAndRelationships/{FieldId}/view`
+- To get the field ID, query: `SELECT Id, DeveloperName FROM CustomField WHERE TableEnumOrId = '{Object}' AND DeveloperName = '{FieldName}'` via Tooling API
+
+### Validation Rules
+- Validation rules list: `{BASE}/lightning/setup/ObjectManager/{ObjectApiName}/ValidationRules/view`
+- Specific rule (by ID): `{BASE}/lightning/setup/ObjectManager/{ObjectApiName}/ValidationRules/{ValidationRuleId}/view`
+
+### Flows
+- All flows: `{BASE}/lightning/setup/Flows/home`
+- Specific flow (by Flow Definition ID or version ID): `{BASE}/builder_platform_interaction/flowBuilder.app?flowId={FlowId}`
+
+### Apex Classes
+- All Apex classes: `{BASE}/lightning/setup/ApexClasses/home`
+- Specific class (by ID): `{BASE}/lightning/setup/ApexClasses/page?address=/{ApexClassId}`
+
+### Apex Triggers
+- All triggers: `{BASE}/lightning/setup/ApexTriggers/home`
+- Specific trigger (by ID): `{BASE}/lightning/setup/ApexTriggers/page?address=/{TriggerId}`
+
+### Permission Sets
+- All permission sets: `{BASE}/lightning/setup/PermSets/home`
+- Specific permission set (by ID): `{BASE}/lightning/setup/PermSets/page?address=/{PermSetId}`
+
+### Profiles
+- All profiles: `{BASE}/lightning/setup/EnhancedProfiles/home`
+
+### Page Layouts
+- Layouts for an object: `{BASE}/lightning/setup/ObjectManager/{ObjectApiName}/PageLayouts/view`
+
+### Reports
+- All reports: `{BASE}/lightning/o/Report/home`
+- Specific report (by ID): `{BASE}/lightning/r/Report/{ReportId}/view`
+
+### Dashboards
+- All dashboards: `{BASE}/lightning/o/Dashboard/home`
+- Specific dashboard (by ID): `{BASE}/lightning/r/Dashboard/{DashboardId}/view`
+
+### Users
+- All users: `{BASE}/lightning/setup/ManageUsers/home`
+- Specific user (by ID): `{BASE}/lightning/setup/ManageUsers/page?address=/{UserId}`
+
+### Custom Objects
+- Object manager: `{BASE}/lightning/setup/ObjectManager/{ObjectApiName}/Details/view`
+
+### Lightning Web Components
+- All LWC: `{BASE}/lightning/setup/LightningComponentBundles/home`
+
+### Email Templates
+- All templates: `{BASE}/lightning/setup/CommunicationTemplatesEmail/home`
+
+### Important notes:
+- Many Salesforce IDs are returned by the tools after create/update — use them to build the URL
+- If you don't have the ID, query for it using the Tooling API or SOQL after creating
+- Always present links in Slack/Teams markdown format: `<{URL}|View in Salesforce>`
