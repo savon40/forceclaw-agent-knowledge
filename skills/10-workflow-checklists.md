@@ -234,4 +234,5 @@ Replace `{BASE}` with the Salesforce instance URL (e.g., `https://myorg.my.sales
 ### Important notes:
 - Many Salesforce IDs are returned by the tools after create/update — use them to build the URL
 - If you don't have the ID, query for it using the Tooling API or SOQL after creating
-- Always present links in Slack/Teams markdown format: `<{URL}|View in Salesforce>`
+- **Just output the full URL as plain text** — Slack and Teams will auto-link it. Do NOT wrap it in angle brackets or markdown link syntax. Just paste the URL directly, e.g.:
+  `https://myorg.my.salesforce.com/lightning/r/Opportunity/006xx000001abc/view`
