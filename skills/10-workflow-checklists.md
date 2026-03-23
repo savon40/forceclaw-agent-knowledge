@@ -167,6 +167,45 @@ Should I go ahead?
 5. **Think about side effects** — will this field be referenced by flows, validation rules, or Apex? Mention if relevant.
 6. **Think about what the admin would want** — FLS, layouts, history tracking, etc. Don't just create the bare minimum.
 
+## Describe-First Rule — ALWAYS query before modifying
+
+Before creating or modifying ANY metadata, ALWAYS describe/query the target object first to verify:
+- The object exists and is accessible
+- Required fields and their types (use `describe_object`)
+- Valid picklist values (check before setting a picklist field)
+- Existing fields (avoid creating duplicates)
+- Existing automation (know what triggers/flows will fire)
+
+This prevents common failures like:
+- `REQUIRED_FIELD_MISSING` — creating a record without a required field
+- Invalid picklist values — setting a value that doesn't exist
+- Non-writeable fields — trying to set a formula or auto-number field
+- Duplicate field names — creating a field that already exists
+
+## Safety Guardrails
+
+Before executing any write operation, check for these dangerous patterns:
+
+| Pattern | Risk | Action |
+|---|---|---|
+| DELETE without a WHERE clause | Deletes ALL records of that type | BLOCK — always require specific criteria |
+| UPDATE without a WHERE clause | Updates ALL records | BLOCK — always require specific criteria |
+| Hardcoded Salesforce IDs | Break between orgs/sandboxes | WARN — suggest using queries or Custom Metadata instead |
+| Deploying directly to production | Untested changes | WARN — suggest sandbox first |
+| Creating a field without FLS | Field invisible to users | REMIND — always ask about field-level security |
+
+## Deployment Ordering
+
+When a task requires creating multiple components, deploy in this order:
+```
+1. Custom Objects & Fields
+2. Permission Sets (with FLS for new fields)
+3. Apex Classes & Triggers
+4. Flows (as Draft first)
+5. Flow Activation
+```
+See `07-deployment.md` for details.
+
 ---
 
 ## Salesforce URL Patterns for Links

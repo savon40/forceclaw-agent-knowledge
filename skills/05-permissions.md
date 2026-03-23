@@ -195,3 +195,104 @@ In sandbox and developer orgs, you can create and modify permission sets using t
 - When debugging "why can't I do X", work top-down: Object permissions → Field permissions → Record sharing → Validation rules
 - **Validation rules can block edits even if permissions allow them** — always check validation rules if the user says "I have access but can't save"
 - Use `describe_object` to see if a field is required, unique, or has other constraints
+
+## Permission Set Groups
+
+Permission Set Groups (PSGs) bundle multiple permission sets together for easier assignment. Instead of assigning 5 individual permission sets to every sales user, create a `Sales_Team` PSG.
+
+### Querying Permission Set Groups
+```sql
+-- List all PSGs
+SELECT Id, DeveloperName, MasterLabel, Status, Description
+FROM PermissionSetGroup
+ORDER BY MasterLabel
+LIMIT 200
+```
+
+```sql
+-- What permission sets are in a group?
+SELECT PermissionSetGroup.MasterLabel, PermissionSet.Name, PermissionSet.Label
+FROM PermissionSetGroupComponent
+WHERE PermissionSetGroup.DeveloperName = 'Sales_Team'
+```
+
+```sql
+-- Who is assigned to a PSG?
+SELECT Assignee.Name, Assignee.Email, Assignee.IsActive
+FROM PermissionSetAssignment
+WHERE PermissionSetGroupId IN (
+    SELECT Id FROM PermissionSetGroup WHERE DeveloperName = 'Sales_Team'
+)
+ORDER BY Assignee.Name
+```
+
+### PSG best practices
+- **Organize by role**: `Sales_Team`, `Finance_Team`, `Support_Team`
+- **Keep individual PSs granular**: Each PS grants one capability (e.g., `Invoice_Full_Access`, `Report_Builder`)
+- **Combine in PSGs**: Group related PSs for role-based assignment
+- **Status values**: `Updated` (ready to use), `Outdated` (recalculating after a change)
+
+## Permission model layers — complete picture
+
+```
+USER's effective access = Profile + Permission Sets + PSGs + Sharing Rules + Role Hierarchy
+```
+
+| Layer | What it controls | How it works |
+|---|---|---|
+| **Profile** | Base permissions (one per user) | Defines default object/field access, system permissions. Legacy — minimize use. |
+| **Permission Sets** | Additional permissions (additive only) | Grants object CRUD, field FLS, Apex class access, Custom Permissions, Tab visibility |
+| **Permission Set Groups** | Bundles of permission sets | Simplifies assignment — assign one PSG instead of many PSs |
+| **Sharing Rules** | Record-level access | Criteria-based or owner-based sharing. Org-Wide Defaults set the baseline (Private, Public Read Only, Public Read/Write) |
+| **Role Hierarchy** | Record visibility inheritance | Managers see records owned by subordinates. Only affects objects with OWD = Private or Public Read Only |
+
+### Permission types explained
+| Type | Values | What it controls |
+|---|---|---|
+| Object permissions | Create, Read, Edit, Delete, View All, Modify All | Whether the user can perform CRUD on the object at all |
+| Field-Level Security | Read, Edit | Whether the user can see/modify a specific field (Edit implies Read) |
+| Setup Entity Access | ApexClass, ApexPage, Flow, CustomPermission | Access to specific platform features |
+| System permissions | ViewSetup, ModifyAllData, ViewAllData, ManageUsers, ApiEnabled | Admin-level org permissions |
+
+### Important: Object CRUD ≠ field visibility
+Granting Read on Account does NOT mean the user can see all Account fields. You must ALSO grant field-level Read on each field they need to see. When creating new custom fields, they are only visible to System Administrator by default — you must explicitly grant FLS via permission sets.
+
+## Advanced permission debugging
+
+### "Who can delete Accounts?"
+```sql
+-- Find all permission sets (including profile-based) that grant Delete on Account
+SELECT Parent.Name, Parent.Label, Parent.IsOwnedByProfile,
+       PermissionsCreate, PermissionsRead, PermissionsEdit, PermissionsDelete,
+       PermissionsViewAllRecords, PermissionsModifyAllRecords
+FROM ObjectPermissions
+WHERE SobjectType = 'Account'
+  AND PermissionsDelete = true
+ORDER BY Parent.Label
+```
+
+### Check for system-level overrides
+Some system permissions override object-level permissions:
+```sql
+-- Find who has ModifyAllData (can modify any record regardless of sharing/FLS)
+SELECT Parent.Name, Parent.Label
+FROM PermissionSet
+WHERE PermissionsModifyAllData = true
+```
+
+```sql
+-- Find who has ViewAllData
+SELECT Parent.Name, Parent.Label
+FROM PermissionSet
+WHERE PermissionsViewAllData = true
+```
+
+### Check Custom Permissions
+Custom Permissions are used in code to gate features:
+```sql
+SELECT SetupEntityId, SetupEntityType, Parent.Name, Parent.Label
+FROM SetupEntityAccess
+WHERE SetupEntityType = 'CustomPermission'
+  AND Parent.IsOwnedByProfile = false
+ORDER BY Parent.Label
+```

@@ -270,3 +270,147 @@ Use `describe_object` and filter for fields where `calculatedFormula` is not nul
 
 ### "What objects exist in this org?"
 Use the `list_objects` tool. To filter to custom objects only, look for API names ending in `__c`.
+
+## SOQL optimization guide
+
+### Indexing and selectivity
+Salesforce automatically indexes certain fields. Queries that use indexed fields in WHERE clauses are **selective** and perform better.
+
+**Always-indexed fields** (use these in WHERE clauses for best performance):
+- `Id`, `Name`, `OwnerId`, `CreatedDate`, `LastModifiedDate`, `SystemModstamp`
+- `RecordTypeId`
+- External ID fields (custom fields marked as External ID)
+- Master-Detail relationship fields
+- Lookup fields
+
+**Selectivity rules:**
+- A query is selective if the WHERE clause matches < 10% of the first 1,000,000 records (or < 5% beyond 1M)
+- Non-selective queries on large objects (100K+ records) may hit "Non-selective query" errors
+
+### SOQL anti-patterns to avoid
+
+| Anti-pattern | Why it's bad | Fix |
+|---|---|---|
+| SOQL inside loops | Hits 100-query governor limit | Query once before the loop, use a Map for lookups |
+| Leading wildcards (`LIKE '%term'`) | Cannot use index, scans all records | Use trailing wildcards (`LIKE 'term%'`) or filter in Apex post-query |
+| Negative operators (`!=`, `NOT IN`) in WHERE | Cannot use index | Query for what you want instead of what you don't |
+| `SELECT *` / `FIELDS(ALL)` | Returns all fields — performance and security issue | Query only the fields you need |
+| No LIMIT on queries | Can return up to 50,000 rows | Always add a reasonable LIMIT |
+| Deep relationship traversal (>5 levels) | Salesforce limit is 5 levels for child-to-parent | Flatten into separate queries |
+| Unfiltered subqueries | Child queries return up to 200 rows per parent | Always add WHERE and LIMIT to subqueries |
+| Querying for NULL (`WHERE Field = null`) | Rarely uses index | Combine with a selective indexed filter |
+| Formula fields in WHERE | Formulas aren't indexed | Use the underlying source field instead |
+
+### SOQL security patterns
+```sql
+-- Enforce FLS automatically (preferred, API 62.0+)
+SELECT Id, Name, AnnualRevenue FROM Account WITH USER_MODE
+
+-- System context (use for internal/admin operations, document why)
+SELECT Id, Name FROM Account WITH SYSTEM_MODE
+```
+
+### Query optimization tips
+1. **Always query only the fields you need** — extra fields increase data transfer and heap usage
+2. **Use bind variables in Apex** — they prevent SOQL injection and are faster than string concatenation
+3. **Use aggregate queries for counts/sums** — `SELECT COUNT() FROM Contact` is faster than fetching all records and counting in Apex
+4. **Use SOQL FOR loops for large result sets** — processes records in batches of 200, avoids heap limits:
+   ```apex
+   for (List<Account> batch : [SELECT Id, Name FROM Account WHERE Industry = 'Tech']) {
+       // processes 200 records at a time
+   }
+   ```
+5. **Use Map constructor for O(1) lookups** — `new Map<Id, Account>(accountList)` is faster than looping
+
+### Relationship query patterns
+
+**Child-to-parent (dot notation, up to 5 levels):**
+```sql
+SELECT Id, Name, Account.Name, Account.Owner.Name
+FROM Contact
+WHERE Account.Industry = 'Technology'
+```
+
+**Parent-to-child (subquery, use relationship name):**
+```sql
+SELECT Id, Name,
+  (SELECT Id, LastName, Email FROM Contacts WHERE IsActive__c = true LIMIT 10)
+FROM Account
+WHERE Industry = 'Technology'
+LIMIT 50
+```
+
+Standard relationship names: `Contacts`, `Opportunities`, `Cases`, `Tasks`, `Events`, `Notes`
+Custom relationship names: use the `__r` suffix (e.g., `Invoices__r`)
+
+### Aggregate query patterns
+```sql
+-- Group by with having (find duplicates, top accounts, etc.)
+SELECT AccountId, Account.Name, COUNT(Id) oppCount, SUM(Amount) totalAmount
+FROM Opportunity
+WHERE StageName = 'Closed Won' AND CloseDate = THIS_YEAR
+GROUP BY AccountId, Account.Name
+HAVING COUNT(Id) > 5
+ORDER BY SUM(Amount) DESC
+LIMIT 20
+```
+
+**Date functions in aggregates:**
+```sql
+SELECT CALENDAR_YEAR(CloseDate) yr, CALENDAR_QUARTER(CloseDate) qtr, SUM(Amount) total
+FROM Opportunity
+WHERE StageName = 'Closed Won'
+GROUP BY CALENDAR_YEAR(CloseDate), CALENDAR_QUARTER(CloseDate)
+ORDER BY CALENDAR_YEAR(CloseDate) DESC, CALENDAR_QUARTER(CloseDate) DESC
+```
+
+## Metadata naming conventions
+
+When creating custom objects, fields, or other metadata, follow these naming standards:
+
+### Custom objects
+- **Format**: `PascalCase__c`, singular noun
+- **Max length**: 40 characters
+- **Good**: `Invoice__c`, `Product_Catalog__c`, `Service_Request__c`
+- **Bad**: `Invoices__c` (plural), `Inv__c` (abbreviated), `SvcReq__c` (cryptic)
+
+### Custom fields
+- **Format**: `Descriptive_Name__c`, PascalCase with underscores
+- **Max length**: 40 characters
+- **Use suffixes for clarity**: `_Date`, `_Amount`, `_Count`, `_Percent`, `_Flag`, `_Code`
+- **Good**: `Total_Amount__c`, `Due_Date__c`, `Is_Active_Flag__c`
+- **Bad**: `Amt__c`, `Field1__c`, `TCV__c`
+
+### Permission sets
+- **Format**: `[Feature]_[AccessLevel]`
+- **Good**: `Invoice_Full_Access`, `Sales_Data_Read_Only`, `ERP_Integration_API`
+- **Bad**: `PS1`, `John_Smith_Access`, `Temp_Access`
+
+### Validation rules
+- **Format**: `[Object]_[Action]_[Condition]`
+- **Good**: `Opp_Require_Close_Date_When_Closed`, `Account_Prevent_Type_Change`
+- **Bad**: `VR001`, `Check1`
+
+## Field type selection guide
+
+| Need | Field Type | Key notes |
+|---|---|---|
+| Short text (≤255 chars) | Text | Searchable, filterable, can be External ID |
+| Long text (>255 chars) | Long Text Area | NOT searchable, NOT filterable. Max 131,072 chars |
+| Rich/formatted text | Rich Text Area | HTML content, max 131,072 chars |
+| Single-select from list | Picklist | Max 1,000 values, use restricted picklist to prevent free-text |
+| Multi-select from list | Multi-select Picklist | Max 500 values, stored semicolon-separated, use INCLUDES() in formulas |
+| Whole numbers | Number (scale=0) | Precision 1-18 digits |
+| Decimal numbers | Number (scale>0) | Precision 1-18, scale 0-17 |
+| Money | Currency | Displays with currency symbol, respects org currency |
+| Percentage | Percent | Stored as decimal, displays with % |
+| Yes/No | Checkbox | Always has a value (true/false), never null |
+| Date (no time) | Date | Timezone-neutral |
+| Date with time | DateTime | Timezone-aware |
+| Optional relationship | Lookup | SetNull or Restrict on delete |
+| Required relationship | Master-Detail | Cascade delete, enables Roll-Up Summaries |
+| Calculated value | Formula | Max 5,000 chars, 10 relationship references |
+| Aggregation from children | Roll-Up Summary | Master-Detail only. COUNT, SUM, MIN, MAX |
+| Email address | Email | Built-in format validation |
+| Phone number | Phone | Click-to-dial support |
+| URL | URL | Click-to-open support |
