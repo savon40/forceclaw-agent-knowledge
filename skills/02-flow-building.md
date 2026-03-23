@@ -372,3 +372,113 @@ For before-save flows, use `$Record` to update fields on the triggering record:
    - Creating/updating OTHER records → after-save
    - Sending notifications → after-save (async preferred)
    - Both same-record and related-record updates → split into two flows (before + after)
+
+## Bulk safety checklist — ALWAYS verify before deploying
+
+Every Flow you build or modify must pass these checks:
+
+### Critical bulk safety rules
+| Rule | Why | How to verify |
+|---|---|---|
+| No Get Records inside loops | Hits SOQL governor limit (100 queries) | Check that no `recordLookups` element is inside a `loops` element |
+| No Create/Update/Delete inside loops | Hits DML governor limit (150 statements) | Check that no `recordCreates`/`recordUpdates`/`recordDeletes` are inside `loops` |
+| Use entry conditions on all record-triggered flows | Prevents unnecessary execution on every record save | Check `start.filters` — should never be empty |
+| Use `IsChanged` in entry conditions when appropriate | Prevents re-firing when unrelated fields change | Add `IsChanged` operator for the fields you care about |
+| Before-save for same-record updates | Before-save doesn't consume DML limits — it's faster | Don't use after-save if you're only updating `$Record` fields |
+
+### Performance tips
+- **Use Transform instead of Loop** for simple field mapping — Transform is 30-50% faster and runs server-side
+- **Filter collections** instead of querying again — use collection filters when you already have the data
+- **Limit subflow nesting depth** — max 50 levels allowed, but keep to 3-4 for maintainability
+
+## Fault paths — ALWAYS add to DML operations
+
+Every `recordCreates`, `recordUpdates`, and `recordDeletes` element MUST have a fault connector. Without fault paths, DML failures cause unhandled exceptions that are hard to debug.
+
+### Pattern: Fault path with error logging
+Add a `faultConnector` to every DML element that points to an error-handling element:
+
+```json
+{
+  "name": "Create_Follow_Up_Task",
+  "label": "Create Follow-up Task",
+  "object": "Task",
+  "faultConnector": { "targetReference": "Handle_Error" },
+  "connector": { "targetReference": "Next_Step" },
+  "inputAssignments": [...]
+}
+```
+
+The error handler can:
+- Log to a custom object (e.g., `Error_Log__c`)
+- Send an email notification
+- Set a status variable for downstream decisions
+- Use `{!$Flow.FaultMessage}` to capture the error text
+
+### Important fault path rules
+- **Fault connectors cannot self-reference** — an element's fault path cannot point back to itself (deployment blocker)
+- **Subflows must be deployed and activated before parent flows** — or deployment fails
+
+## Flow XML gotchas — common deployment failures
+
+| Issue | Problem | Fix |
+|---|---|---|
+| `storeOutputAutomatically: true` in recordLookups | Retrieves ALL fields including sensitive data — security risk | Explicitly list needed fields with `outputAssignments` |
+| Relationship fields in recordLookups | Not supported (e.g., `Account.Name` in a Contact lookup) | Use a two-step query: Get Records for Contact → Get Records for Account using the AccountId |
+| `$Record` vs `$Record__c` | `$Record` = triggering record; `$Record__c` doesn't exist | Always use `$Record` (no __c suffix) |
+| Element ordering in XML | Root-level elements must be in alphabetical order | Sort: `actionCalls`, `assignments`, `decisions`, `formulas`, `recordCreates`, `recordLookups`, `recordUpdates`, `start`, `variables` |
+| Missing `processMetadataValues` | Flow Builder won't render properly | Always include BuilderType, CanvasMode, OriginBuilderType |
+
+## Subflow patterns
+
+### When to use subflows
+- **Reusable logic** shared across multiple flows (e.g., error logging, email alerts, record validation)
+- **Breaking up complex flows** — keep each flow focused on one responsibility
+- **Testability** — subflows can be tested independently
+
+### Calling a subflow
+```json
+{
+  "name": "Log_Error",
+  "label": "Log Error",
+  "actionType": "subflow",
+  "actionName": "Sub_LogError",
+  "connector": { "targetReference": "Next_Element" },
+  "inputParameters": [
+    { "name": "ErrorMessage", "value": { "elementReference": "$Flow.FaultMessage" } },
+    { "name": "FlowName", "value": { "stringValue": "My_Flow_Name" } },
+    { "name": "RecordId", "value": { "elementReference": "$Record.Id" } }
+  ]
+}
+```
+
+### Common reusable subflow ideas
+| Subflow | Purpose | Inputs |
+|---|---|---|
+| `Sub_LogError` | Write error details to an Error_Log__c record | ErrorMessage, FlowName, RecordId |
+| `Sub_SendEmailAlert` | Send a notification email | RecipientId, Subject, Body |
+| `Sub_ValidateRecord` | Check required fields and business rules before save | RecordId, ObjectType |
+
+## Flow testing checklist
+
+Before activating any flow, verify:
+
+- [ ] **Path coverage** — test every decision branch (every outcome, including the default)
+- [ ] **Bulk test** — trigger with 200+ records at once (e.g., bulk data load or mass update)
+- [ ] **Edge cases** — null values, empty collections, blank text fields, date boundaries
+- [ ] **User context** — test with different profiles (admin, standard user, community user)
+- [ ] **Error handling** — verify fault paths fire correctly when DML fails
+- [ ] **Entry conditions** — verify the flow does NOT fire when conditions are not met
+- [ ] **Before-save only updates $Record** — verify no DML elements exist in before-save flows (they'll fail)
+
+## Flow type selection guide
+
+| Need | Flow Type | triggerType | processType |
+|---|---|---|---|
+| Update fields on the same record when it's saved | Record-Triggered (Before Save) | `RecordBeforeSave` | `AutoLaunchedFlow` |
+| Create/update related records when a record is saved | Record-Triggered (After Save) | `RecordAfterSave` | `AutoLaunchedFlow` |
+| User fills out a form / wizard | Screen Flow | *(none)* | `Flow` |
+| Background processing called by other automation or Apex | Autolaunched | *(none)* | `AutoLaunchedFlow` |
+| Process records on a schedule (e.g., nightly cleanup) | Scheduled | `Scheduled` | `AutoLaunchedFlow` |
+| React to platform events | Platform Event-Triggered | `PlatformEvent` | `AutoLaunchedFlow` |
+| Multi-step process with approvals or wait states | Orchestrator | *(special)* | `Orchestrator` |
