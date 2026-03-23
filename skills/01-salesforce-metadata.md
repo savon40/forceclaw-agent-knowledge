@@ -17,7 +17,9 @@ You MUST use the `query_tooling` tool for these:**
 
 Querying any of these via `query_salesforce` returns: `sObject type 'X' is not supported.`
 
-**Use `query_salesforce` (standard SOQL) for:** data objects (Account, Contact, Opportunity, Case, etc.), `FlowDefinitionView`, `FlowVersionView`, `User`, `PermissionSet`, `PermissionSetAssignment`, `ObjectPermissions`, `FieldPermissions`, `UserRole`.
+**Use `query_salesforce` (standard SOQL) for:** data objects (Account, Contact, Opportunity, Case, etc.), `FlowDefinitionView`, `FlowVersionView`, `User`, `PermissionSet`, `PermissionSetAssignment`, `ObjectPermissions`, `FieldPermissions`, `UserRole`, `RecordType`, `Profile`.
+
+**NEVER query objects ending in `__hd`, `__x`, `__xo`, `__b`, or any non-standard suffix.** These are internal Salesforce objects and will error. The only valid custom suffixes are `__c` (custom objects), `__mdt` (custom metadata), `__e` (platform events), and `__r` (relationship names in SOQL). If you need data about record types, use the `RecordType` standard object.
 
 ## When to use which tool
 
@@ -107,6 +109,8 @@ LIMIT 50
 | `ObjectPermissions` | `SobjectType`, `PermissionsRead/Edit/Create/Delete` | Object-level access |
 | `FieldPermissions` | `SobjectType`, `Field`, `PermissionsRead/Edit` | Field-level security |
 | `UserRole` | `Name`, `ParentRoleId` | Role hierarchy |
+| `RecordType` | `Id`, `Name`, `DeveloperName`, `SobjectType`, `IsActive`, `Description`, `BusinessProcessId` | Record type lookups — use `DeveloperName` (not `Name`) for automation since it's translation-stable |
+| `Profile` | `Id`, `Name`, `UserType` | Profile lookups |
 
 ### Queryable via Tooling API only (`query_tooling` tool)
 | sObject | Key fields | Use for |
@@ -267,6 +271,21 @@ LIMIT 50
 
 ### "Show me formula fields on [Object]"
 Use `describe_object` and filter for fields where `calculatedFormula` is not null.
+
+### "What record types exist on [Object]?"
+**Use `query_salesforce`** (RecordType is a standard SOQL object — NOT Tooling API):
+```sql
+SELECT Id, Name, DeveloperName, IsActive, Description
+FROM RecordType
+WHERE SobjectType = 'Opportunity'
+ORDER BY Name
+```
+
+### "Which profiles have access to record type X?"
+Use the `read_profile_record_type_visibility` tool or query `RecordType` + profile record type defaults.
+
+### "What objects exist in this org?"
+Use the `list_objects` tool. To filter to custom objects only, look for API names ending in `__c`.
 
 ### "What objects exist in this org?"
 Use the `list_objects` tool. To filter to custom objects only, look for API names ending in `__c`.
