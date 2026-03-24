@@ -124,6 +124,7 @@ LIMIT 50
 | `ApexTrigger` | `Name`, `Body`, `TableEnumOrId`, `Status` | Trigger metadata + source code |
 | `LightningComponentBundle` | `DeveloperName`, `MasterLabel`, `ApiVersion` | LWC bundles — Tooling API only |
 | `AssignmentRule` | `Name`, `SobjectType`, `Active` | Lead/case assignment rules |
+| `FlexiPage` | `DeveloperName`, `MasterLabel`, `Type`, `EntityDefinitionId`, `Metadata` (single-row only) | Lightning Record Pages, Home Pages, App Pages. Use to check Dynamic Forms field placement |
 
 **Important notes:**
 - `ApexClass.Body` and `ApexTrigger.Body` contain the full source code — only available via Tooling API, only in dev/sandbox orgs
@@ -307,10 +308,30 @@ The user's profile or permission sets may not grant visibility to the field.
 - A field can exist on the page layout but still NOT appear on the record page if the FlexiPage doesn't include it
 - Fields on Dynamic Forms can have **visibility rules** (component visibility filters) that show/hide them based on record data
 
-**How to check:** FlexiPages are metadata components of type `FlexiPage`. They are NOT queryable via SOQL or Tooling API in a straightforward way. If page layout changes don't fix the issue, tell the user:
-- "This record page may be using a **Lightning Record Page with Dynamic Forms**. In that case, the field needs to be added to the Lightning page itself, not the page layout."
-- "Check Setup → Object Manager → [Object] → Lightning Record Pages to see which page is assigned."
-- "If Dynamic Forms are enabled, fields are dragged directly onto the Lightning page in the Lightning App Builder."
+**How to check:** FlexiPages are queryable via the **Tooling API**.
+
+**Step 1 — List FlexiPages for an object:**
+```sql
+SELECT Id, DeveloperName, MasterLabel, Type
+FROM FlexiPage
+WHERE EntityDefinitionId = 'Opportunity'
+ORDER BY MasterLabel
+```
+Common `Type` values: `RecordPage` (Lightning Record Page), `HomePage`, `AppPage`.
+
+**Step 2 — Read a specific FlexiPage's full structure (including Dynamic Form fields):**
+```sql
+SELECT Id, DeveloperName, MasterLabel, Metadata
+FROM FlexiPage
+WHERE DeveloperName = 'Opportunity_Record_Page'
+LIMIT 1
+```
+**IMPORTANT:** The `Metadata` field can only be included when the query returns exactly 1 row (same restriction as ValidationRule.Metadata). Use `LIMIT 1` with a specific `DeveloperName`.
+
+**Step 3 — Read the Metadata:**
+The `Metadata` JSON contains `flexiPageRegions` → each region has `itemInstances` → each item has a `componentName` (e.g., `flexipage:fieldSection`, `flowruntime:interview`, etc.) and `fieldItem` references that list which fields are on the page.
+
+Look for `fieldItem` entries — these are the fields placed via Dynamic Forms. If the field you're looking for is NOT in any `fieldItem`, that's why it's not visible.
 
 ### 3. Page Layout
 The field may not be on the assigned page layout.
@@ -324,10 +345,14 @@ The user may be viewing a record type that has a different page layout assigned.
 ### 5. The field is empty/null
 Some admins hide empty fields. This is a Dynamic Forms visibility rule (e.g., "only show this field when it has a value").
 
-### When investigating field visibility, always mention:
-- "I checked the page layout and the field [is/is not] there."
-- "However, if your org uses **Lightning Record Pages with Dynamic Forms**, the field visibility is controlled by the Lightning page, not the page layout. You may need to check the Lightning App Builder."
-- This is important because the bot CANNOT currently read or modify FlexiPages — it's a known limitation.
+### When investigating field visibility, always:
+1. Check FLS first (FieldPermissions query)
+2. Check if the object has FlexiPages with Dynamic Forms (query FlexiPage via Tooling API)
+3. If a FlexiPage exists, read its Metadata to see if the field is placed on it
+4. If no FlexiPage or Dynamic Forms, check the page layout
+5. Tell the user exactly what you found — "The field is on the page layout but NOT on the Lightning Record Page" or "The field is missing from both"
+
+**You CAN read FlexiPages** via the Tooling API `query_tooling` tool. You CANNOT currently modify them — if a field needs to be added to a FlexiPage, tell the user to do it in the Lightning App Builder.
 
 ---
 
