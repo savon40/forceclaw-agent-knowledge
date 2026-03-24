@@ -290,6 +290,47 @@ Use the `list_objects` tool. To filter to custom objects only, look for API name
 ### "What objects exist in this org?"
 Use the `list_objects` tool. To filter to custom objects only, look for API names ending in `__c`.
 
+## Why a field might not be visible on a record page
+
+When a user asks "why can't I see field X on this record," there are MULTIPLE possible reasons.
+**Do NOT assume it's only a page layout issue.** Check ALL of these in order:
+
+### 1. Field-Level Security (FLS)
+The user's profile or permission sets may not grant visibility to the field.
+- Query: `SELECT Id, Field, SobjectType, PermissionsRead, PermissionsEdit FROM FieldPermissions WHERE SobjectType = '{Object}' AND Field = '{Object}.{FieldName}'`
+- Also check the user's profile and assigned permission sets
+
+### 2. Lightning Record Page with Dynamic Forms (FlexiPage)
+**IMPORTANT:** Many orgs use **Lightning Record Pages (FlexiPages)** with **Dynamic Forms** instead of traditional page layouts. When Dynamic Forms are enabled on an object:
+- Fields are placed **directly on the FlexiPage**, NOT through the page layout
+- The page layout's field section is replaced by individual field components on the FlexiPage
+- A field can exist on the page layout but still NOT appear on the record page if the FlexiPage doesn't include it
+- Fields on Dynamic Forms can have **visibility rules** (component visibility filters) that show/hide them based on record data
+
+**How to check:** FlexiPages are metadata components of type `FlexiPage`. They are NOT queryable via SOQL or Tooling API in a straightforward way. If page layout changes don't fix the issue, tell the user:
+- "This record page may be using a **Lightning Record Page with Dynamic Forms**. In that case, the field needs to be added to the Lightning page itself, not the page layout."
+- "Check Setup → Object Manager → [Object] → Lightning Record Pages to see which page is assigned."
+- "If Dynamic Forms are enabled, fields are dragged directly onto the Lightning page in the Lightning App Builder."
+
+### 3. Page Layout
+The field may not be on the assigned page layout.
+- Use `list_page_layouts` and `read_page_layout` to check
+- Different record types can have different page layouts assigned
+- Check which page layout the user's profile is assigned to for this record type
+
+### 4. Record Type
+The user may be viewing a record type that has a different page layout assigned.
+
+### 5. The field is empty/null
+Some admins hide empty fields. This is a Dynamic Forms visibility rule (e.g., "only show this field when it has a value").
+
+### When investigating field visibility, always mention:
+- "I checked the page layout and the field [is/is not] there."
+- "However, if your org uses **Lightning Record Pages with Dynamic Forms**, the field visibility is controlled by the Lightning page, not the page layout. You may need to check the Lightning App Builder."
+- This is important because the bot CANNOT currently read or modify FlexiPages — it's a known limitation.
+
+---
+
 ## SOQL optimization guide
 
 ### Indexing and selectivity
