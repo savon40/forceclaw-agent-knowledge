@@ -158,6 +158,39 @@ Should I go ahead?
 
 ---
 
+## Investigating "Why Can't I See This Field?" — MANDATORY CHECKLIST
+
+When a user asks why a field isn't visible on a record page, you MUST check ALL of these — do NOT stop after finding one issue:
+
+### Step 1: Verify the field exists
+- Use `describe_object` to confirm the field exists on the object
+
+### Step 2: Check Field-Level Security
+- Query `FieldPermissions` for the user's profile and permission sets
+- If FLS is not granted, that's likely the issue — offer to fix it
+
+### Step 3: Check for Lightning Record Pages with Dynamic Forms (CRITICAL — DO NOT SKIP)
+- Query FlexiPages for the object: `SELECT Id, DeveloperName, MasterLabel, Type FROM FlexiPage WHERE EntityDefinitionId = '{ObjectApiName}'` via **query_tooling**
+- If FlexiPages of type `RecordPage` exist, the object likely uses Dynamic Forms
+- Read the FlexiPage metadata: `SELECT Id, DeveloperName, Metadata FROM FlexiPage WHERE DeveloperName = '{PageName}' LIMIT 1` via **query_tooling**
+- Check if the field appears in the FlexiPage's `Metadata` → `flexiPageRegions` → `itemInstances` → `fieldItem`
+- If the field is NOT on the FlexiPage, tell the user: "This record uses a Lightning Record Page with Dynamic Forms. The field needs to be added to the Lightning page in the Lightning App Builder — page layout changes won't affect it."
+
+### Step 4: Check the page layout
+- Use `list_page_layouts` and `read_page_layout` to see if the field is on the layout
+- Note: if Dynamic Forms are in use (Step 3), the page layout may be irrelevant
+
+### Step 5: Tell the user what you found
+Always report ALL findings:
+- "The field exists ✓"
+- "FLS is granted ✓ / FLS is NOT granted ✗"
+- "This object uses a Lightning Record Page with Dynamic Forms — the field [is / is not] on the Lightning page"
+- "The field [is / is not] on the page layout (but Dynamic Forms override the layout)"
+
+**NEVER say "the field is not on the page layout" without also checking for FlexiPages.** Many orgs use Dynamic Forms, and telling the user to add a field to the page layout when it won't help is misleading.
+
+---
+
 ## General Rules for All Write Operations
 
 1. **Always describe what you'll do** before doing it
@@ -212,7 +245,12 @@ See `07-deployment.md` for details.
 
 After creating or updating any metadata, **always include a clickable link** so the user can go directly to it in Salesforce Setup. Use the instance URL from your org context.
 
-Replace `{BASE}` with the Salesforce instance URL (e.g., `https://myorg.my.salesforce.com`).
+Replace `{BASE}` with the Salesforce instance URL from your org context.
+
+**IMPORTANT URL conversion:** The instance URL in org context uses `.my.salesforce.com`, but Lightning pages use `.lightning.force.com`. You MUST convert the URL:
+- `https://myorg.my.salesforce.com` → `https://myorg.lightning.force.com`
+- `https://myorg--sandbox.sandbox.my.salesforce.com` → `https://myorg--sandbox.sandbox.lightning.force.com`
+- Simply replace `.my.salesforce.com` with `.lightning.force.com` in the URL
 
 ### Records
 - Any record: `{BASE}/lightning/r/{ObjectApiName}/{RecordId}/view`
@@ -229,7 +267,8 @@ Replace `{BASE}` with the Salesforce instance URL (e.g., `https://myorg.my.sales
 
 ### Flows
 - All flows: `{BASE}/lightning/setup/Flows/home`
-- Specific flow (by Flow Definition ID or version ID): `{BASE}/builder_platform_interaction/flowBuilder.app?flowId={FlowId}`
+- Specific flow in Flow Builder (by Flow version ID, starts with 301): `{BASE}/builder_platform_interaction/flowBuilder.app?flowId={FlowVersionId}`
+- To get the Flow version ID after creating a flow, query: `SELECT Id FROM Flow WHERE Definition.DeveloperName = '{FlowApiName}' ORDER BY VersionNumber DESC LIMIT 1` via Tooling API
 
 ### Apex Classes
 - All Apex classes: `{BASE}/lightning/setup/ApexClasses/home`
