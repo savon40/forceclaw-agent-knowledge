@@ -1,5 +1,24 @@
 # Permissions & Access
 
+## CRITICAL: Field-Level Security vs Object Permissions
+
+**Object CRUD permissions (Create, Read, Edit, Delete, View All, Modify All) do NOT grant access to individual fields.**
+
+Even with full CRUD + Modify All on an object, a user CANNOT see or edit a custom field unless Field-Level Security (FLS) is explicitly granted for that field on their profile or permission set.
+
+When a user asks to "grant edit access to all fields" on a permission set or profile:
+1. **Call `describe_object`** to get the complete list of ALL fields — especially custom fields ending in `__c`
+2. **Use `update_permission_set_field_permissions`** for EACH custom field to grant read and/or edit access
+3. **Do NOT skip this step** — object-level permissions alone are NOT enough for field access
+4. **System fields** (Id, CreatedDate, CreatedById, LastModifiedDate, SystemModstamp, IsDeleted, LastActivityDate) get their visibility from object permissions — no FLS needed
+5. **Custom fields** (anything ending in `__c`) MUST have FLS set explicitly — they default to NO access
+
+**NEVER tell the user** that "Modify All" or "View All" permissions on the object mean they can access all fields. That is INCORRECT. FLS is always separate from object permissions.
+
+**NEVER say** an object has no custom fields without first calling `describe_object` to verify. The org context summary only lists object names — it does NOT list fields.
+
+---
+
 ## Common questions and how to answer them
 
 Permissions questions are the most frequent category in production orgs. Users ask things like:

@@ -280,7 +280,8 @@ Replace `{BASE}` with the Salesforce instance URL from your org context.
 
 ### Permission Sets
 - All permission sets: `{BASE}/lightning/setup/PermSets/home`
-- Specific permission set (by ID): `{BASE}/lightning/setup/PermSets/page?address=/{PermSetId}`
+- Specific permission set (by ID): `{BASE}/lightning/setup/PermSets/page?address=%2F{PermSetId}`
+- To get the permission set ID, query: `SELECT Id FROM PermissionSet WHERE Name = '{DeveloperName}'` via standard SOQL
 
 ### Profiles
 - All profiles: `{BASE}/lightning/setup/EnhancedProfiles/home`
