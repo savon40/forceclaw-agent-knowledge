@@ -8,6 +8,38 @@
 - Activate and deactivate existing Flows
 - Answer questions about what a Flow does based on its metadata
 
+## CRITICAL: Flow Formula Functions — What EXISTS and What DOESN'T
+
+**SIZE() does NOT exist in Flow formulas.** Do NOT use SIZE() to count a collection. It will cause a syntax error.
+
+**To count records in a collection:**
+Use an **Assignment element** with the **"Equals Count"** operator:
+- Create a Number variable (e.g., `OppCount`)
+- Add an Assignment element
+- Set: `OppCount` → **Equals Count** → `{!Get_Open_Opportunities}`
+- This counts the records in the collection and stores it in the variable
+
+**Available Flow formula functions** (ONLY use these — anything not on this list will error):
+
+**Math:** ABS, CEILING, MCEILING, FLOOR, MFLOOR, ROUND, TRUNC, MOD, SQRT, EXP, LN, LOG, MAX, MIN
+
+**Text:** LEN, UPPER, LOWER, INITCAP, LEFT, RIGHT, MID, TRIM, LPAD, RPAD, SUBSTITUTE, CONTAINS, BEGINS, FIND, REVERSE, HTMLENCODE, JSENCODE, URLENCODE, TEXT, VALUE
+
+**Date/Time:** TODAY, NOW, DATE, DATEVALUE, DATETIMEVALUE, DAY, MONTH, YEAR, WEEKDAY, ADDMONTHS, DAYOFYEAR, ISOWEEK, ISOYEAR, FORMATDURATION, FROMUNIXTIME, UNIXTIMESTAMP
+
+**Logical:** IF, AND, OR, NOT, CASE, ISBLANK, ISNULL, ISNUMBER, ISCLONE, ISNEW, ISCHANGED, PRIORVALUE
+
+**Other:** REGEX, GEOLOCATION, DISTANCE, CURRENCYRATE, NULLVALUE, BLANKVALUE
+
+**Functions that DO NOT exist in Flow (common mistakes):**
+- `SIZE()` — use Assignment with "Equals Count" operator instead
+- `COUNT()` — this is SOQL, not a Flow formula
+- `VLOOKUP()` — use a Get Records element instead
+- `HYPERLINK()` — not available in Flow formulas
+- `IMAGE()` — not available in Flow formulas
+
+---
+
 ## Flow types
 
 | Type | processType | triggerType | When to use |

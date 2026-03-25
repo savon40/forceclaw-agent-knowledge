@@ -70,6 +70,9 @@ Should I go ahead?
 
 ## Creating a Validation Rule
 
+### FIRST: Check existing validation rules
+Query existing rules: `SELECT ValidationName, Active, ErrorMessage FROM ValidationRule WHERE EntityDefinition.QualifiedApiName = '{ObjectApiName}'` via Tooling API. If a similar rule exists, tell the user and ask if they want to modify the existing one instead.
+
 ### Ask about:
 1. **Object** — which object?
 2. **When should it fire?** — describe the business rule in plain English, then translate to formula
@@ -94,6 +97,17 @@ Should I go ahead?
 
 ## Creating a Flow
 
+### FIRST: Check for existing automation on the object
+
+Before creating a new flow, ALWAYS check what automation already exists on the object:
+1. Query existing flows: `SELECT ApiName, Label, ProcessType, TriggerType, RecordTriggerType, IsActive FROM FlowDefinitionView WHERE TriggerObjectOrEventLabel = '{ObjectLabel}' AND IsActive = true` via standard SOQL
+2. Also check for Apex triggers: `SELECT Name, TableEnumOrId FROM ApexTrigger WHERE TableEnumOrId = '{ObjectApiName}'` via Tooling API
+
+If there are existing record-triggered flows of the **same trigger type** (e.g., Before Save):
+- Tell the user: "I found an existing Before Save flow on Account called **Account Before Insert / Update**. Would you like me to add this logic to the existing flow, or create a new separate flow?"
+- Adding to an existing flow is usually better — it avoids order-of-execution conflicts, reduces the number of flows to maintain, and is the Salesforce best practice
+- Only create a new flow if the user explicitly wants a separate one, or if the logic is completely unrelated to the existing flow
+
 ### Ask about:
 1. **Type** — Record-triggered? Screen? Scheduled? Autolaunched?
 2. **Object** — which object triggers it?
@@ -106,6 +120,31 @@ Should I go ahead?
 - Should it run on **create only**, **update only**, or **create and update**?
 - Are there **entry conditions** (only run when certain criteria are met)?
 - Should it run **before save** (for field updates on the same record) or **after save** (for creating related records, sending emails)?
+
+---
+
+## Creating or Modifying Apex (Triggers, Classes, LWC)
+
+### FIRST: Check for existing triggers and handlers on the object
+
+Before writing any new Apex for an object, ALWAYS check what already exists:
+1. Query existing triggers: `SELECT Id, Name, TableEnumOrId, Status FROM ApexTrigger WHERE TableEnumOrId = '{ObjectApiName}'` via Tooling API
+2. If a trigger exists, read the trigger body with `get_apex_trigger_body` to see the handler class name
+3. If a trigger handler exists, read it with `get_apex_class_body`
+
+**Salesforce best practice: ONE trigger per object.** If a trigger already exists on the object:
+- **Do NOT create a second trigger.** Multiple triggers on the same object have unpredictable execution order.
+- Instead, add the new logic to the **existing trigger handler class**.
+- Tell the user: "I found an existing trigger **AccountTrigger** that delegates to **AccountTriggerHandler**. I'll add the new logic to the handler instead of creating a separate trigger."
+
+If NO trigger exists and the user wants trigger-based logic:
+- Create the trigger + handler following the one-trigger-per-object pattern (see `03-apex-development.md`)
+
+### When asked to write or modify Apex:
+1. **Check existing code first** — always read the current class/trigger before modifying
+2. **Show the plan** — describe what you'll add/change before doing it
+3. **Create test classes** — every new Apex class should have a corresponding test class
+4. **Run tests after changes** — use `run_apex_tests` to verify
 
 ---
 
