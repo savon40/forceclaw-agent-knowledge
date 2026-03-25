@@ -8,6 +8,42 @@
 - Activate and deactivate existing Flows
 - Answer questions about what a Flow does based on its metadata
 
+## CRITICAL: How to Block a Save / Show an Error in a Before Save Flow
+
+When the user wants a flow to **prevent a record from being saved** and **show an error message**, you MUST use a **Custom Error** element — NOT an "Update Records" element that reverts the field value.
+
+**Wrong approach (DO NOT DO THIS):**
+- Using an Update Records element to set the field back to its prior value
+- This doesn't actually block the save or show an error — it just silently reverts the field
+
+**Correct approach — use a Custom Error element in the flow metadata:**
+In the Flow metadata JSON, add a `customErrors` element. This is the Flow equivalent of `addError()` in Apex.
+
+```json
+{
+  "name": "Show_Error_Open_Opportunities",
+  "label": "Show Error: Open Opportunities",
+  "locationX": 176,
+  "locationY": 500,
+  "customErrorMessages": [
+    {
+      "errorMessage": "Cannot change Status to Churned because there are open Opportunities. Please close or delete all Opportunities first.",
+      "fieldSelection": "Status__c",
+      "isFieldError": true
+    }
+  ]
+}
+```
+
+- `customErrorMessages.errorMessage` — the error message shown to the user
+- `customErrorMessages.fieldSelection` — optional field to show the error on (makes it a field-level error)
+- `customErrorMessages.isFieldError` — `true` to show on the field, `false` to show at the top of the page
+- Connect the Decision element's "error path" to this Custom Error element instead of an Update Records element
+
+**The Custom Error element blocks the save entirely** — the record is NOT saved and the user sees the error message. This is the correct way to implement validation logic in a Before Save flow.
+
+---
+
 ## CRITICAL: Flow Formula Functions — What EXISTS and What DOESN'T
 
 **SIZE() does NOT exist in Flow formulas.** Do NOT use SIZE() to count a collection. It will cause a syntax error.
