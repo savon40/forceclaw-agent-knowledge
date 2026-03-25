@@ -422,6 +422,211 @@ For before-save flows, use `$Record` to update fields on the triggering record:
 { "elementReference": "FormulaOrVariableName" }
 ```
 
+## Record Lookup (Get Records) elements
+
+Use `recordLookups` to query related records in a flow. This is how you check for child records, look up parent data, etc.
+
+```json
+{
+  "name": "Get_Open_Opportunities",
+  "label": "Get Open Opportunities",
+  "locationX": 176,
+  "locationY": 300,
+  "object": "Opportunity",
+  "filterLogic": "and",
+  "filters": [
+    {
+      "field": "AccountId",
+      "operator": "EqualTo",
+      "value": { "elementReference": "$Record.Id" }
+    },
+    {
+      "field": "IsClosed",
+      "operator": "EqualTo",
+      "value": { "booleanValue": false }
+    }
+  ],
+  "getFirstRecordOnly": false,
+  "storeOutputAutomatically": true,
+  "connector": { "targetReference": "Check_Has_Open_Opps" }
+}
+```
+
+- `getFirstRecordOnly: false` → returns a collection (for counting or looping)
+- `getFirstRecordOnly: true` → returns a single record
+- `storeOutputAutomatically: true` → auto-stores results (use the element name as the reference, e.g., `{!Get_Open_Opportunities}`)
+
+---
+
+## COMPLETE EXAMPLE: Before Save Validation Flow (Block save with error)
+
+This is the most common pattern admins ask for. "Don't let users do X if Y exists."
+
+**Full metadata for: "Prevent Account Status change to Churned if open Opportunities exist"**
+
+```json
+{
+  "processType": "AutoLaunchedFlow",
+  "apiVersion": "62.0",
+  "interviewLabel": "Prevent_Account_Churn_With_Open_Opps {!$Flow.CurrentDateTime}",
+  "environments": "Default",
+  "status": "Active",
+  "description": "Prevents Account Status from being changed to Churned when there are open Opportunities on the Account.",
+  "processMetadataValues": [
+    { "name": "BuilderType", "value": { "stringValue": "LightningFlowBuilder" } },
+    { "name": "CanvasMode", "value": { "stringValue": "AUTO_LAYOUT_CANVAS" } },
+    { "name": "OriginBuilderType", "value": { "stringValue": "LightningFlowBuilder" } }
+  ],
+  "start": {
+    "locationX": 176,
+    "locationY": 0,
+    "object": "Account",
+    "recordTriggerType": "Update",
+    "triggerType": "RecordBeforeSave",
+    "connector": { "targetReference": "Get_Open_Opportunities" },
+    "filterLogic": "and",
+    "filters": [
+      {
+        "field": "Status__c",
+        "operator": "IsChanged",
+        "value": { "booleanValue": true }
+      },
+      {
+        "field": "Status__c",
+        "operator": "EqualTo",
+        "value": { "stringValue": "Churned" }
+      }
+    ]
+  },
+  "recordLookups": [
+    {
+      "name": "Get_Open_Opportunities",
+      "label": "Get Open Opportunities",
+      "locationX": 176,
+      "locationY": 200,
+      "object": "Opportunity",
+      "filterLogic": "and",
+      "filters": [
+        {
+          "field": "AccountId",
+          "operator": "EqualTo",
+          "value": { "elementReference": "$Record.Id" }
+        },
+        {
+          "field": "IsClosed",
+          "operator": "EqualTo",
+          "value": { "booleanValue": false }
+        }
+      ],
+      "getFirstRecordOnly": true,
+      "storeOutputAutomatically": true,
+      "connector": { "targetReference": "Has_Open_Opportunities" }
+    }
+  ],
+  "decisions": [
+    {
+      "name": "Has_Open_Opportunities",
+      "label": "Has Open Opportunities?",
+      "locationX": 176,
+      "locationY": 400,
+      "defaultConnectorLabel": "No Open Opps",
+      "rules": [
+        {
+          "name": "Open_Opps_Found",
+          "label": "Open Opps Found",
+          "conditionLogic": "and",
+          "conditions": [
+            {
+              "leftValueReference": "Get_Open_Opportunities",
+              "operator": "IsNull",
+              "rightValue": { "booleanValue": false }
+            }
+          ],
+          "connector": { "targetReference": "Show_Error" }
+        }
+      ]
+    }
+  ],
+  "customErrors": [
+    {
+      "name": "Show_Error",
+      "label": "Show Error: Open Opportunities Exist",
+      "locationX": 176,
+      "locationY": 600,
+      "customErrorMessages": [
+        {
+          "errorMessage": "Cannot change Account Status to Churned because there are open Opportunities. Please close or delete all Opportunities first.",
+          "fieldSelection": "Status__c",
+          "isFieldError": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Key points about this pattern:**
+- `getFirstRecordOnly: true` — we only need to know IF any exist, not get all of them
+- Decision checks if the lookup result `IsNull = false` (i.e., a record was found)
+- `customErrors` element blocks the save and shows the error — NOT an Update Records element
+- Entry conditions use `IsChanged` + `EqualTo` so the flow only fires when Status actually changes to Churned
+
+---
+
+## COMPLETE EXAMPLE: Before Save Field Update Flow
+
+**"Set Close Date to today when Opportunity Stage changes to Closed Won"**
+
+```json
+{
+  "processType": "AutoLaunchedFlow",
+  "apiVersion": "62.0",
+  "status": "Active",
+  "start": {
+    "locationX": 176,
+    "locationY": 0,
+    "object": "Opportunity",
+    "recordTriggerType": "Update",
+    "triggerType": "RecordBeforeSave",
+    "connector": { "targetReference": "Set_Close_Date" },
+    "filterLogic": "and",
+    "filters": [
+      {
+        "field": "StageName",
+        "operator": "IsChanged",
+        "value": { "booleanValue": true }
+      },
+      {
+        "field": "StageName",
+        "operator": "EqualTo",
+        "value": { "stringValue": "Closed Won" }
+      }
+    ]
+  },
+  "recordUpdates": [
+    {
+      "name": "Set_Close_Date",
+      "label": "Set Close Date to Today",
+      "locationX": 176,
+      "locationY": 200,
+      "inputAssignments": [
+        {
+          "field": "CloseDate",
+          "value": { "elementReference": "$Flow.CurrentDate" }
+        }
+      ]
+    }
+  ],
+  "processMetadataValues": [
+    { "name": "BuilderType", "value": { "stringValue": "LightningFlowBuilder" } },
+    { "name": "CanvasMode", "value": { "stringValue": "AUTO_LAYOUT_CANVAS" } },
+    { "name": "OriginBuilderType", "value": { "stringValue": "LightningFlowBuilder" } }
+  ]
+}
+```
+
+---
+
 ## Flow best practices
 
 1. **Use before-save flows for same-record field updates** — they don't consume DML limits and are faster
