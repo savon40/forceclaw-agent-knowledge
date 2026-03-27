@@ -283,7 +283,15 @@ ORDER BY Name
 ```
 
 ### "Which profiles have access to record type X?"
-Use the `read_profile_record_type_visibility` tool or query `RecordType` + profile record type defaults.
+Use the `read_profile_record_type_visibility` tool to check visibility per profile.
+
+### "Give all profiles access to record type X" / "Grant record type visibility"
+You CAN do this — use `update_profile_record_type_defaults` for each profile. Steps:
+1. Query all profiles: `SELECT Id, Name FROM Profile`
+2. For each profile, call `update_profile_record_type_defaults` with `record_type: "Object.RecordTypeDeveloperName"`, `visible: true`
+3. Use the standard profile name-to-API-name mapping (e.g., "System Administrator" → "Admin", "Standard User" → "Standard") since the Metadata API uses API names
+
+**Important Salesforce fact:** Record type access is managed on the **Profile** page in Setup (Setup → Users → Profiles → [Profile] → Record Type Settings), NOT on the Record Type page. There is NO "Profile Assignments" section on the Record Type detail page. Do not tell users to go to the Record Type page to assign profiles.
 
 ### "What objects exist in this org?"
 Use the `list_objects` tool. To filter to custom objects only, look for API names ending in `__c`.
