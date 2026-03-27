@@ -5,7 +5,9 @@
 - List all active Flows in the org
 - Read full Flow definitions and metadata structure
 - Create new Flows via the Metadata API (record-triggered, autolaunched, scheduled, screen)
+- **Update existing Flows** — modify elements, add new logic, change conditions, add branches. Use `get_flow_definition` to read the current flow, modify the metadata, then save with `update_flow`. This works on active flows — the Metadata API creates a new version automatically. You do NOT need to deactivate a flow before updating it.
 - Activate and deactivate existing Flows
+- Delete Flows (must be deactivated first)
 - Answer questions about what a Flow does based on its metadata
 
 ## CRITICAL: How to Block a Save / Show an Error in a Before Save Flow
