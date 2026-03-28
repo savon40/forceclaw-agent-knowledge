@@ -6,6 +6,20 @@
 
 Even with full CRUD + Modify All on an object, a user CANNOT see or edit a custom field unless Field-Level Security (FLS) is explicitly granted for that field on their profile or permission set.
 
+### Resolving field names from labels
+
+Users refer to fields by their **label** (e.g., "GM %"), not their API name (e.g., `GM__c`). Do NOT guess API names — the label and DeveloperName are often very different. If `describe_object` doesn't show the field (likely because the connected user lacks FLS on it), use the Tooling API to search by label:
+
+```
+SELECT DeveloperName, Metadata FROM CustomField WHERE TableEnumOrId = 'Opportunity'
+```
+
+The Tooling API CustomField query **bypasses FLS** and returns all fields regardless of the connected user's profile. The `Metadata.label` property gives you the field label to match against, and `DeveloperName` + `__c` gives you the correct API name.
+
+**NEVER** fabricate or guess an API name from a label. "GM %" is NOT `GM_Percent__c` — look it up.
+
+---
+
 When a user asks to "grant edit access to all fields" on a permission set or profile:
 1. **Call `describe_object`** to get the complete list of ALL fields — especially custom fields ending in `__c`
 2. **Use `update_permission_set_field_permissions`** for EACH custom field to grant read and/or edit access
