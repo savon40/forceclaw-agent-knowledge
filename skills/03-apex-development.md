@@ -423,3 +423,68 @@ Assert.isNull(value, 'message');
 Assert.isNotNull(value, 'message');
 Assert.isInstanceOfType(obj, Type.class, 'message');
 ```
+
+## Date vs DateTime — critical SOQL binding rules
+
+Salesforce enforces strict type matching between bind variables and SOQL field types. Mismatches cause compile errors.
+
+**Rule:** Use `Date` bind variables for `Date` fields, and `DateTime` bind variables for `DateTime` fields. Never mix them.
+
+### Common Date fields (use `Date` type)
+- `Task.ActivityDate`, `Event.ActivityDate`
+- `Opportunity.CloseDate`
+- `Contract.StartDate`
+- `Account.LastActivityDate` (system-maintained)
+
+### Common DateTime fields (use `DateTime` type)
+- `Task.CreatedDate`, `Event.CreatedDate`
+- `Account.CreatedDate`, `Contact.CreatedDate`
+- `Opportunity.CreatedDate`, `Case.CreatedDate`
+- `Account.LastModifiedDate`
+
+### Pattern
+```apex
+// CORRECT — Date bind for Date field
+Date cutoff = Date.today().addDays(-30);
+List<Task> tasks = [SELECT Id FROM Task WHERE ActivityDate >= :cutoff];
+
+// WRONG — DateTime bind for Date field (compile error)
+DateTime cutoff = DateTime.now().addDays(-30);
+List<Task> tasks = [SELECT Id FROM Task WHERE ActivityDate >= :cutoff]; // ERROR
+```
+
+## Read-only and system-managed fields in test data
+
+These fields CANNOT be set during insert/update, even in test context:
+
+| Field | Why | Workaround |
+|-------|-----|------------|
+| `Contract.EndDate` | Calculated from `StartDate + ContractTerm` | Set `StartDate` and `ContractTerm` instead |
+| `Case.CreatedDate` | System-managed timestamp | Use `Test.setCreatedDate(recordId, dateTimeValue)` after insert |
+| `Opportunity.CreatedDate` | System-managed timestamp | Use `Test.setCreatedDate(recordId, dateTimeValue)` after insert |
+| `Account.CreatedDate` | System-managed timestamp | Use `Test.setCreatedDate(recordId, dateTimeValue)` after insert |
+| `*.LastModifiedDate` | System-managed | Cannot be set; design tests around relative dates |
+| `*.LastActivityDate` | System-calculated from Tasks/Events | Insert Tasks/Events to populate it |
+| `*.SystemModstamp` | System-managed | Cannot be set |
+
+### Pattern for setting CreatedDate in tests
+```apex
+@IsTest
+static void testWithOldRecord() {
+    Account acc = new Account(Name = 'Test');
+    insert acc;
+    // Set CreatedDate AFTER insert using Test utility
+    Test.setCreatedDate(acc.Id, DateTime.now().addDays(-90));
+    // Re-query to get updated value
+    acc = [SELECT Id, CreatedDate FROM Account WHERE Id = :acc.Id];
+}
+```
+
+### Pattern for Contract test data
+```apex
+// WRONG — EndDate is not writeable
+Contract c = new Contract(AccountId = acc.Id, StartDate = Date.today(), EndDate = Date.today().addMonths(12));
+
+// CORRECT — use ContractTerm (months) and StartDate
+Contract c = new Contract(AccountId = acc.Id, StartDate = Date.today(), ContractTerm = 12, Status = 'Draft');
+```
