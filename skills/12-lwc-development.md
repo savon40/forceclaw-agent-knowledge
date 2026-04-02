@@ -17,6 +17,8 @@ LWC HTML templates have STRICT rules — no JavaScript expressions of any kind. 
 5. **NO deep property access on potentially null objects** — wrap in `<template if:true={obj}>` before accessing `{obj.prop}`
 6. **NO emoji or Unicode symbols in HTML templates** — characters like the recycle symbol, checkmarks, warning signs, or X marks cause compile failures. Use plain text ("Refresh", "OK", "Warning") or SLDS icons (`<lightning-icon>`) instead
 7. **NO HTML entities or special characters** in button labels or text content — stick to plain ASCII text
+8. **Static inline styles MUST be quoted** — `style="color: red; font-weight: bold"` is OK, but dynamic styles MUST use a getter: `style={myStyle}`
+9. **NEVER use `update_apex_class` for LWC files** — use `update_lwc` to modify existing LWC components. `update_apex_class` is only for `.cls` Apex files
 
 ### These patterns ALWAYS cause LWC1058 deploy failure
 
@@ -59,6 +61,44 @@ Every one of these is an instant deploy failure. The `if:true` / `if:false` dire
 <!-- CORRECT: plain text or SLDS icon -->
 <button>Refresh</button>
 <lightning-icon icon-name="utility:check" size="x-small"></lightning-icon> Healthy
+```
+
+## Style attributes — common deploy failures
+
+```html
+<!-- DEPLOY FAILURE: dynamic style without getter -->
+<div style={`color: ${myColor}`}></div>              <!-- LWC1058 ERROR -->
+<span style={"color: " + color + ";"}>text</span>    <!-- LWC1058 ERROR -->
+
+<!-- OK: static inline style (must be properly quoted) -->
+<div style="color: red; font-weight: bold">text</div>
+
+<!-- OK: dynamic style via getter -->
+<div style={computedStyle}>text</div>
+```
+
+```javascript
+// In JS — getter returns the full style string:
+get computedStyle() { return `color: ${this.myColor}; font-weight: bold;`; }
+```
+
+For iteration where each item needs a different style, compute the style string in the JS getter/map — not in the template:
+
+```javascript
+// CORRECT pattern for per-item styles
+get factorValues() {
+    return this.factors.map(f => ({
+        ...f,
+        barStyle: `width: ${f.pct}%; background: ${f.color};`,
+        valueStyle: `color: ${f.color}; font-weight: 600;`,
+    }));
+}
+```
+
+```html
+<!-- Then in template, just bind the pre-computed style -->
+<div style={factor.barStyle}></div>
+<span style={factor.valueStyle}>{factor.value}</span>
 ```
 
 ## The pattern: move ALL logic to JS getters
