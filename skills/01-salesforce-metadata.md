@@ -118,7 +118,7 @@ LIMIT 50
 | `ValidationRule` | `ValidationName`, `Active`, `Description`, `ErrorMessage`, `EntityDefinition.QualifiedApiName` — `Metadata`/`FullName` single-row only (formula is inside `Metadata`) | Validation rules |
 | `WorkflowRule` | `Name`, `TableEnumOrId` | Legacy workflow rules — NOT in standard SOQL |
 | `FlowDefinition` | `DeveloperName`, `MasterLabel`, `ActiveVersionId`, `LatestVersionId`, `Description` — does NOT have ProcessType, TriggerType, Status | Flow metadata (prefer FlowDefinitionView for listing) |
-| `Flow` | `DefinitionId`, `Definition.DeveloperName`, `MasterLabel`, `ProcessType`, `Status`, `VersionNumber`, `Metadata` — does NOT have TriggerType, RecordTriggerType, TriggerObjectOrEventLabel | Flow version metadata via Tooling API only |
+| `Flow` | `Id`, `DefinitionId`, `FullName`, `MasterLabel`, `ProcessType`, `Status`, `VersionNumber`, `Metadata`, `ApiVersion`, `Description`, `Environments`, `IsTemplate`, `ManageableState`, `RunInMode`, `TimeZoneSidKey` — does NOT have `DeveloperName`, `TriggerType`, `RecordTriggerType`, `TriggerObjectOrEventLabel`. To find by name, query `FlowDefinition` first by `DeveloperName`, then get `Flow` by version ID. | Flow version metadata via Tooling API only |
 | `CustomField` | `DeveloperName`, `TableEnumOrId`, `DataType` | Custom field definitions |
 | `ApexClass` | `Name`, `Body`, `Status`, `ApiVersion` | Apex class metadata + source code |
 | `ApexTrigger` | `Name`, `Body`, `TableEnumOrId`, `Status` | Trigger metadata + source code |
