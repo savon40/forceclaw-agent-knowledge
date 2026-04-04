@@ -629,6 +629,15 @@ This is the most common pattern admins ask for. "Don't let users do X if Y exist
 
 ---
 
+## Flow building workflow — plan, confirm, build (separate turns)
+
+Building a flow is ALWAYS a two-turn process:
+
+1. **Turn 1 (plan):** Gather context with read-only tools (query flows on the object, describe the object, read any existing flow you'd be updating). Generate a flowchart diagram with `generate_diagram`. Present the plan as text: what the flow does, its trigger, the elements, any assumptions. Ask "Should I go ahead?". **STOP the turn here.** Do NOT call `create_flow` or `update_flow` in this same response.
+2. **Turn 2 (build):** After the user confirms ("yes", "build it", "go ahead", "looks good"), immediately call `create_flow` / `update_flow` with the full metadata JSON. No re-summarizing, no re-asking.
+
+A single response must NEVER contain both a plan/diagram AND a `create_flow` / `update_flow` call. The diagram tool call itself does NOT count as confirmation — after generating the diagram, end the turn and let the user review it.
+
 ## Flow best practices
 
 1. **Use before-save flows for same-record field updates** — they don't consume DML limits and are faster
