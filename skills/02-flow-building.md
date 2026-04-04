@@ -245,10 +245,33 @@ Every element that leads to another element needs a `connector` with `targetRefe
     "connector": { "targetReference": "Update_Record" },
     "conditionLogic": "and",
     "conditions": [...]
-  }],
-  "defaultConnector": { "targetReference": "End_Flow" }
+  }]
 }
 ```
+
+### CRITICAL — there is NO "End" element in flows
+
+**Do NOT invent `End_Flow`, `End_No_Account`, `End_Domain_Match`, or any other terminator element.** Flows have no explicit end node — a path ends by simply **omitting the connector** on the last element, or by omitting a `defaultConnector` / the rule-level `connector` where you want the path to stop.
+
+Wrong (causes `Invalid element reference End_Flow not found for target`):
+```json
+{
+  "name": "Check_Stage",
+  "rules": [{ "connector": { "targetReference": "Update_Record" } }],
+  "defaultConnector": { "targetReference": "End_Flow" }  // ← End_Flow doesn't exist anywhere
+}
+```
+
+Right — just omit `defaultConnector` entirely when that path should terminate:
+```json
+{
+  "name": "Check_Stage",
+  "rules": [{ "connector": { "targetReference": "Update_Record" } }]
+  // no defaultConnector → default path ends the flow
+}
+```
+
+Same applies to action calls and record operations: if the action is the last step, simply don't add a `connector` field. The flow terminates naturally. This is the #1 cause of wasted retries on `create_flow`.
 
 ### Start element for record-triggered flows
 
@@ -818,8 +841,45 @@ The error handler can:
 | `storeOutputAutomatically: true` in recordLookups | Retrieves ALL fields including sensitive data — security risk | Explicitly list needed fields with `outputAssignments` |
 | Relationship fields in recordLookups | Not supported (e.g., `Account.Name` in a Contact lookup) | Use a two-step query: Get Records for Contact → Get Records for Account using the AccountId |
 | `$Record` vs `$Record__c` | `$Record` = triggering record; `$Record__c` doesn't exist | Always use `$Record` (no __c suffix) |
+| Polymorphic reference syntax like `$Record.Owner:User.Email` | Not valid in flow elements — causes `Invalid element reference` error | Add a `recordLookups` on User filtered by `Id = $Record.OwnerId`, then reference `Get_Owner.Email` |
+| Cross-object fields through Lookups (`$Record.Account.Website` inside a formula or condition) | Flows cannot traverse lookups from `$Record` in most contexts | Add a `recordLookups` to Get the related Account, then reference `Get_Account.Website` |
+| Inventing "End" terminator elements like `End_Flow`, `End_No_Account` | No such element type exists; causes `Invalid element reference X not found for target` | Omit the `connector` / `defaultConnector` to end a path |
+| `TEXT()` called on a value that is already Text | `Incorrect parameter type for function 'TEXT()'. Expected Number, Date, Date/Time, Picklist, received Text` | Don't wrap strings in `TEXT()` — it only converts Number/Date/DateTime/Picklist → Text. Reference the value directly. |
 | Element ordering in XML | Root-level elements must be in alphabetical order | Sort: `actionCalls`, `assignments`, `decisions`, `formulas`, `recordCreates`, `recordLookups`, `recordUpdates`, `start`, `variables` |
 | Missing `processMetadataValues` | Flow Builder won't render properly | Always include BuilderType, CanvasMode, OriginBuilderType |
+
+### Accessing related record fields — ALWAYS use a Get Records element
+
+Flow elements cannot traverse lookup relationships from `$Record` the way formula fields or SOQL can. You cannot write `$Record.Account.Website`, `$Record.Owner.Email`, `$Record.Owner:User.Email`, or any polymorphic reference inside a decision condition, formula expression, assignment, or action input parameter. These all fail with `Invalid element reference ... not found for target`.
+
+The correct pattern is always **Get Records → reference the output**:
+
+```json
+{
+  "recordLookups": [
+    {
+      "name": "Get_Contact_Owner",
+      "label": "Get Contact Owner",
+      "object": "User",
+      "filterLogic": "and",
+      "filters": [
+        {
+          "field": "Id",
+          "operator": "EqualTo",
+          "value": { "elementReference": "$Record.OwnerId" }
+        }
+      ],
+      "getFirstRecordOnly": true,
+      "storeOutputAutomatically": true,
+      "connector": { "targetReference": "Next_Element" }
+    }
+  ]
+}
+```
+
+Then reference the owner's email anywhere in the flow as `Get_Contact_Owner.Email`. Same pattern for Account (Get Records on Account filtered by `Id = $Record.AccountId`, then use `Get_Account.Website`).
+
+**Common IDs to look up:** `$Record.OwnerId` → User, `$Record.AccountId` → Account, `$Record.ContactId` → Contact, `$Record.CreatedById` / `$Record.LastModifiedById` → User.
 
 ## Subflow patterns
 
