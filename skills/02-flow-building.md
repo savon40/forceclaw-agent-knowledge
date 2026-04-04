@@ -387,6 +387,8 @@ For before-save flows, use `$Record` to update fields on the triggering record:
 }
 ```
 
+**CRITICAL — formulas do NOT support a `label` field.** The only valid top-level fields on a formula are `name`, `dataType`, `expression`, `scale` (optional), and `description` (optional). Adding `label` causes: `Element {http://soap.sforce.com/2006/04/metadata}label invalid at this location in type FlowFormula`. Use only the `name` for identification.
+
 ### Assignment elements
 
 ```json
@@ -457,6 +459,112 @@ Use `recordLookups` to query related records in a flow. This is how you check fo
 - `getFirstRecordOnly: false` → returns a collection (for counting or looping)
 - `getFirstRecordOnly: true` → returns a single record
 - `storeOutputAutomatically: true` → auto-stores results (use the element name as the reference, e.g., `{!Get_Open_Opportunities}`)
+
+---
+
+## Sending Email from a Flow — `emailSimple` action (READ BEFORE USING)
+
+Sending an email via the `emailSimple` core action has strict requirements. Get them wrong and you'll hit one of these infinite-loop errors:
+- `Provide at least one email recipient.` → wrong parameter name
+- `The input parameter "Recipient Addresses" can accept multiple values, so the assigned value must be a flow variable with the isCollection property set to true.` → you passed a `stringValue` instead of a collection variable reference
+
+### The four things you MUST get right
+
+1. **Parameter name is `emailAddressesArray`** (not `emailAddresses`, not `recipientAddresses`, not `emailAddressesString`).
+2. **The value MUST be an `elementReference` to a String variable with `isCollection: true`** — NOT a `stringValue`. Even if you only want to send to one address, it still must be a collection.
+3. **Populate the collection** via an Assignment element that uses operator `Add` to push the email string onto the variable BEFORE the `Send_Email` action runs.
+4. **Use `emailBody` with a `textTemplates` reference**, not a raw string. The template name goes in `elementReference`.
+
+### Full working pattern (JSON for `create_flow`)
+
+```json
+{
+  "variables": [
+    {
+      "name": "EmailRecipients",
+      "dataType": "String",
+      "isCollection": true,
+      "isInput": false,
+      "isOutput": false
+    }
+  ],
+  "assignments": [
+    {
+      "name": "Add_Recipient",
+      "label": "Add Recipient",
+      "locationX": 176,
+      "locationY": 300,
+      "assignmentItems": [
+        {
+          "assignToReference": "EmailRecipients",
+          "operator": "Add",
+          "value": { "stringValue": "owner@example.com" }
+        }
+      ],
+      "connector": { "targetReference": "Send_Email" }
+    }
+  ],
+  "textTemplates": [
+    {
+      "name": "Email_Body_Template",
+      "isViewedAsPlainText": true,
+      "text": "Contact {!$Record.Name} had their email domain changed to {!$Record.Email}."
+    }
+  ],
+  "actionCalls": [
+    {
+      "name": "Send_Email",
+      "label": "Send Email",
+      "locationX": 176,
+      "locationY": 500,
+      "actionName": "emailSimple",
+      "actionType": "emailSimple",
+      "flowTransactionModel": "CurrentTransaction",
+      "nameSegment": "emailSimple",
+      "versionString": "1.0.1",
+      "inputParameters": [
+        { "name": "emailAddressesArray", "value": { "elementReference": "EmailRecipients" } },
+        { "name": "emailSubject", "value": { "stringValue": "Contact Email Changed" } },
+        { "name": "emailBody", "value": { "elementReference": "Email_Body_Template" } },
+        { "name": "sendRichBody", "value": { "booleanValue": false } }
+      ]
+    }
+  ]
+}
+```
+
+### Common mistakes the model makes (DO NOT DO THESE)
+
+| Wrong | Why it fails | Right |
+|---|---|---|
+| `"name": "emailAddresses"` | Not a valid param name | `"name": "emailAddressesArray"` |
+| `"name": "recipientAddresses"` | Not a valid param name | `"name": "emailAddressesArray"` |
+| `{ "stringValue": "a@b.com" }` for recipients | Must be a collection | `{ "elementReference": "EmailRecipients" }` pointing to a `isCollection: true` String var |
+| Omit the Assignment that populates the collection | Collection is empty → "Provide at least one email recipient" | Add an Assignment with operator `Add` to push the address onto the collection first |
+| `emailBody: { "stringValue": "..." }` | Body must reference a text template | `emailBody: { "elementReference": "Email_Body_Template" }` |
+
+### Dynamic recipients (e.g. record owner's email)
+
+If you want to send to the record owner, add a Get Records element for the User by Id = `$Record.OwnerId`, then assign `{!Get_Owner.Email}` into the collection via the Assignment:
+
+```json
+{
+  "assignmentItems": [
+    {
+      "assignToReference": "EmailRecipients",
+      "operator": "Add",
+      "value": { "elementReference": "Get_Owner.Email" }
+    }
+  ]
+}
+```
+
+### When to use `emailSimple` vs `create_email_alert`
+
+- **`emailSimple` action in a flow** — ad-hoc email from a flow, body defined inline via text template. Use this when the recipient list is dynamic or computed at runtime.
+- **`create_email_alert` (WorkflowAlert)** — reusable alert tied to an EmailTemplate. Use when you want a named alert that can be invoked from multiple flows or workflow rules. Requires the template to already exist.
+
+If the model is stuck in a retry loop on `emailSimple`, DO NOT pivot to `create_email_alert` as a workaround — fix the `emailSimple` payload using the pattern above. Pivoting buries the root cause and usually fails too (EmailTemplate body parsing is separately strict).
 
 ---
 
