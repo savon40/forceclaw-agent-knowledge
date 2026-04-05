@@ -78,6 +78,54 @@ Use an **Assignment element** with the **"Equals Count"** operator:
 
 ---
 
+## CRITICAL: Before Save vs After Save — pick the right trigger FIRST
+
+This is the #1 source of wasted retries on flow builds. Choose the trigger type during planning, not after Salesforce rejects the save.
+
+**Before Save (`RecordBeforeSave`) — the ONLY things allowed:**
+- Update fields on `$Record` (the triggering record)
+- Decision elements
+- Assignment elements
+- Formula resources
+- Get Records (read-only lookups)
+- Loops over in-memory collections
+
+**Before Save cannot contain ANY of these — Salesforce will reject the save at build time:**
+- ❌ Action Calls of ANY kind (email, Slack, subflow, Apex invocable, MuleSoft, external service, emailAlert, emailSimple)
+- ❌ Screen elements
+- ❌ Pause / Wait elements
+- ❌ Create Records / Update Records on OTHER objects (only `$Record` itself can be updated)
+- ❌ Delete Records
+- ❌ Roll-back on error (fault paths that transition to action calls)
+- ❌ `scheduledPaths`
+
+The exact Salesforce errors you'll see if you get it wrong:
+- `A flow can't include Action elements when TriggerType is set to Record—Run Before Save`
+- `You can't use the Send Email action type in flows with the Record—Run Before Save trigger type`
+- `ACTIONCALL_NOT_SUPPORTED_FOR_TRIGGERTYPE`
+
+**Decision rule — apply during planning, before writing metadata:**
+
+> If the flow needs to do ANYTHING other than set fields on the triggering record, it MUST be After Save.
+
+Specific scenarios and the required trigger type:
+
+| Requirement | Trigger |
+|---|---|
+| Set a field value on the same record being saved | **Before Save** |
+| Send an email (alert, emailSimple, template) | **After Save** |
+| Create/update a related Task, Case, Opportunity, or any record other than `$Record` | **After Save** |
+| Post to Slack, call an external API, invoke a MuleSoft process | **After Save** |
+| Call a subflow that does any of the above | **After Save** |
+| Run Apex via invocable action | **After Save** |
+| Validate and block the save with a user-visible error | **Before Save** (use `customErrors`) |
+| Look up data (Get Records) and store in a variable for downstream logic | Either — choose based on what the downstream logic does |
+| Mix: update the same record AND send an email | **After Save** (you can still update `$Record` from After Save; it just uses a DML statement) |
+
+**When in doubt: pick After Save.** The only penalty for After Save over Before Save is minor (uses a DML statement for same-record updates). The penalty for wrongly picking Before Save is a hard Salesforce build-time rejection and a wasted turn.
+
+---
+
 ## Flow types
 
 | Type | processType | triggerType | When to use |
@@ -410,7 +458,24 @@ For before-save flows, use `$Record` to update fields on the triggering record:
 }
 ```
 
-**CRITICAL — formulas do NOT support a `label` field.** The only valid top-level fields on a formula are `name`, `dataType`, `expression`, `scale` (optional), and `description` (optional). Adding `label` causes: `Element {http://soap.sforce.com/2006/04/metadata}label invalid at this location in type FlowFormula`. Use only the `name` for identification.
+**CRITICAL — formulas do NOT support a `label` field.** The only valid top-level fields on a formula are `name`, `dataType`, `expression`, `scale` (optional), and `description` (optional). Adding `label`, `locationX`, or `locationY` causes: `Element {http://soap.sforce.com/2006/04/metadata}<field> invalid at this location in type FlowFormula`. Use only the `name` for identification.
+
+### Flow dataType enum values — MUST use these exact strings
+
+Flow variables, formulas, and constants use the Metadata API's `FlowDataType` enum. The valid values are:
+
+- `"String"` — for any text. **NEVER use `"Text"` — that is a field type, NOT a Flow dataType.** Using `"Text"` causes `'Text' is not a valid value for the enum 'FlowDataType'`.
+- `"Number"` — for numeric values (integer or decimal)
+- `"Currency"` — for currency amounts
+- `"Boolean"` — for true/false
+- `"Date"` — for dates (no time component)
+- `"DateTime"` — for date + time
+- `"Picklist"` — for picklist values
+- `"Multipicklist"` — for multi-select picklists
+- `"SObject"` — for record variables (requires `objectType` field)
+- `"Apex"` — for Apex-defined types (requires `apexClass` field)
+
+**Common mistake:** using `"Text"` for a String variable. Salesforce field types use "Text" (as in a Text field on an object), but Flow variables use "String" for the same concept. This is a naming inconsistency in the Salesforce platform — remember: **field type = "Text", flow dataType = "String"**.
 
 ### Assignment elements
 
@@ -771,22 +836,16 @@ A single response must NEVER contain both a plan/diagram AND a `create_flow` / `
 
 ## Flow best practices
 
-1. **Use before-save flows for same-record field updates** — they don't consume DML limits and are faster
-2. **Use after-save flows when you need to create/update related records** or call external services
-3. **Always add entry conditions** via `filters` on the `start` element to prevent unnecessary runs
-4. **Use `IsChanged` operator** in entry conditions to only fire when specific fields change:
+1. **Before Save vs After Save** — see the "CRITICAL: Before Save vs After Save" section near the top of this doc. Before Save is a hard Salesforce constraint, not a preference: Action Calls, email sends, cross-record DML, and Custom Errors are forbidden in Before Save flows. When in doubt, pick After Save.
+2. **Always add entry conditions** via `filters` on the `start` element to prevent unnecessary runs
+3. **Use `IsChanged` operator** in entry conditions to only fire when specific fields change:
    ```json
    { "field": "StageName", "operator": "IsChanged", "value": { "booleanValue": true } }
    ```
-5. **Set `locationX` and `locationY` to 0** for all elements — the Flow Builder auto-layout will position them
-6. **Use descriptive element names** with underscores (e.g., `Check_Stage_Is_Closed_Won`)
-7. **Always include `processMetadataValues`** for BuilderType, CanvasMode, and OriginBuilderType
-8. **Use `apiVersion: "62.0"`** for compatibility
-9. **Before-save vs after-save decision guide:**
-   - Updating a field on the SAME record → before-save
-   - Creating/updating OTHER records → after-save
-   - Sending notifications → after-save (async preferred)
-   - Both same-record and related-record updates → split into two flows (before + after)
+4. **Set `locationX` and `locationY` to 0** for all elements — the Flow Builder auto-layout will position them
+5. **Use descriptive element names** with underscores (e.g., `Check_Stage_Is_Closed_Won`)
+6. **Always include `processMetadataValues`** for BuilderType, CanvasMode, and OriginBuilderType
+7. **Use `apiVersion: "62.0"`** for compatibility
 
 ## Bulk safety checklist — ALWAYS verify before deploying
 
