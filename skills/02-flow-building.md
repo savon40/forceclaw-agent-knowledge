@@ -126,6 +126,163 @@ Specific scenarios and the required trigger type:
 
 ---
 
+## CRITICAL: NEVER hardcode record IDs in flow metadata
+
+This rule has ZERO exceptions. When a flow needs to reference a queue, user, record type, profile, custom metadata record, or any other record by ID, you MUST look up the ID at runtime via a `recordLookups` (Get Records) element. Never embed a literal Salesforce ID string in the metadata, even if you just created the record and know the ID from a previous tool call.
+
+**Why:**
+- IDs are per-org — they are different in every sandbox, in production, in every scratch org
+- A flow built with hardcoded IDs is impossible to deploy between environments
+- IDs change when records are deleted and recreated (queue renamed, user deactivated and restored, etc.)
+- Hardcoded IDs make flows invisible to metadata dependency analysis, impact assessments, and change sets
+- When a hardcoded ID breaks, the flow fails silently in production with no obvious fix
+
+**Wrong (NEVER DO THIS):**
+```json
+{
+  "name": "Assign_to_Enterprise_Inbound",
+  "object": "Lead",
+  "filters": [{ "field": "Id", "operator": "EqualTo", "value": { "elementReference": "$Record.Id" } }],
+  "inputAssignments": [
+    { "field": "OwnerId", "value": { "stringValue": "00GcX000003o2GEUAY" } }
+  ]
+}
+```
+
+**Right — look up the queue first, reference the result:**
+
+1. Add a `recordLookups` element to get the queue by its stable identifier (queues are stored as `Group` records with `Type = 'Queue'`):
+
+```json
+{
+  "name": "Get_Enterprise_Inbound_Queue",
+  "label": "Get Enterprise Inbound Queue",
+  "object": "Group",
+  "filterLogic": "and",
+  "filters": [
+    { "field": "DeveloperName", "operator": "EqualTo", "value": { "stringValue": "Enterprise_Inbound" } },
+    { "field": "Type", "operator": "EqualTo", "value": { "stringValue": "Queue" } }
+  ],
+  "getFirstRecordOnly": true,
+  "storeOutputAutomatically": true,
+  "connector": { "targetReference": "Assign_to_Enterprise_Inbound" }
+}
+```
+
+2. Reference the looked-up Id in the assignment:
+
+```json
+{
+  "name": "Assign_to_Enterprise_Inbound",
+  "object": "Lead",
+  "filters": [{ "field": "Id", "operator": "EqualTo", "value": { "elementReference": "$Record.Id" } }],
+  "inputAssignments": [
+    { "field": "OwnerId", "value": { "elementReference": "Get_Enterprise_Inbound_Queue.Id" } }
+  ]
+}
+```
+
+### Lookup patterns for common record types
+
+| What you need | Query | Stable identifier |
+|---|---|---|
+| Queue | `Group WHERE Type = 'Queue' AND DeveloperName = '<name>'` | `DeveloperName` |
+| User by username | `User WHERE Username = '<email>'` | `Username` |
+| User by name (less stable) | `User WHERE Name = '<full name>' AND IsActive = true` | `Name` |
+| Record Type | `RecordType WHERE DeveloperName = '<name>' AND SobjectType = '<object>'` | `DeveloperName` + `SobjectType` |
+| Profile | `Profile WHERE Name = '<name>'` | `Name` |
+| Custom Metadata record | `<Type>__mdt WHERE DeveloperName = '<name>'` | `DeveloperName` |
+| Custom Setting | `<Setting>__c WHERE Name = '<name>'` | `Name` |
+
+### Efficiency tip
+
+If the flow needs to route to multiple queues, add ONE `recordLookups` per queue up front (before the decision). Reference each by its Get Records output downstream. Don't bury lookups inside decision branches — it makes the flow harder to follow and can cause SOQL limit issues if the branches are inside a loop.
+
+### When a model just created the records
+
+If you used `execute_anonymous_apex` to create queues earlier in the same conversation and got the IDs back in the output, **DO NOT embed those IDs in the flow**. The flow must still query for them via Get Records — because the flow runs at runtime in the user's production org eventually, not in the conversation context.
+
+---
+
+## CRITICAL: ALWAYS add fault paths to every DML and callout element
+
+Every `recordCreates`, `recordUpdates`, `recordDeletes`, `actionCalls` (email, Slack, Apex invocable, subflow), and `recordLookups` MUST have a `faultConnector` pointing to an error-handling element. No exceptions. This rule applies to EVERY flow you build or update.
+
+**Why:**
+- Without a fault path, any DML or callout failure throws an unhandled exception — the flow silently errors out mid-execution and leaves data in an inconsistent state
+- The user will see cryptic flow error emails from Salesforce with no context about what happened
+- Downstream logic never runs, but the record has been partially modified — hard to debug and harder to undo
+- In production, unhandled flow errors become noisy enough that flows get deactivated in frustration
+
+**Minimum pattern — email the user who was running the flow when something breaks:**
+
+```json
+{
+  "actionCalls": [
+    {
+      "name": "Handle_Flow_Error",
+      "label": "Handle Flow Error",
+      "actionName": "emailSimple",
+      "actionType": "emailSimple",
+      "flowTransactionModel": "CurrentTransaction",
+      "nameSegment": "emailSimple",
+      "versionString": "1.0.1",
+      "inputParameters": [
+        { "name": "emailAddressesArray", "value": { "elementReference": "ErrorRecipients" } },
+        { "name": "emailSubject", "value": { "stringValue": "Flow Error: <flow name>" } },
+        { "name": "emailBody", "value": { "elementReference": "Error_Email_Template" } },
+        { "name": "sendRichBody", "value": { "booleanValue": false } }
+      ]
+    }
+  ],
+  "textTemplates": [
+    {
+      "name": "Error_Email_Template",
+      "isViewedAsPlainText": true,
+      "text": "A flow failure occurred.\n\nRecord ID: {!$Record.Id}\nRecord Name: {!$Record.Name}\nError: {!$Flow.FaultMessage}\n\nPlease investigate."
+    }
+  ],
+  "variables": [
+    {
+      "name": "ErrorRecipients",
+      "dataType": "String",
+      "isCollection": true,
+      "isInput": false,
+      "isOutput": false
+    }
+  ]
+}
+```
+
+Then on EVERY DML / callout element, add the fault connector:
+
+```json
+{
+  "name": "Assign_to_Enterprise_Inbound",
+  "object": "Lead",
+  "connector": { "targetReference": "Next_Step" },
+  "faultConnector": { "targetReference": "Handle_Flow_Error" },
+  "filters": [...],
+  "inputAssignments": [...]
+}
+```
+
+### Where to send fault emails
+
+- **If the account has custom instructions specifying a recipient** (e.g. admin email for flow errors), use that address
+- Otherwise, default to the record owner's email via a User lookup (Get Records on User filtered by Id = `$Record.OwnerId`, then add `{!Get_Owner.Email}` to the ErrorRecipients collection)
+- **NEVER hardcode a specific email address unless the account's custom instructions explicitly provide one** — and even then, the address itself should be treated as configuration, not as "the model's choice"
+
+### Populating the ErrorRecipients collection
+
+Use an `Assignment` element with operator `Add` to push the email onto the collection variable before the error path runs. See the emailSimple canonical pattern in this document.
+
+### When fault paths CAN be omitted
+
+Almost never. The only legitimate exception is a Before Save flow that only updates `$Record` — because Before Save updates happen in-memory and Salesforce rolls back the whole save on exception automatically. For everything else (After Save DML, any action call, any record lookup that might fail), always include a fault path.
+
+---
+
 ## Flow types
 
 | Type | processType | triggerType | When to use |
@@ -392,13 +549,14 @@ For after-save flows that should run asynchronously, use `scheduledPaths` with `
 
 ### Record update elements (before-save — same record)
 
-For before-save flows, use `$Record` to update fields on the triggering record:
+For before-save flows, use `inputReference: "$Record"` to update fields on the triggering record:
 ```json
 {
   "name": "Set_Close_Date",
   "label": "Set Close Date",
   "locationX": 0,
   "locationY": 0,
+  "inputReference": "$Record",
   "inputAssignments": [{
     "field": "CloseDate",
     "value": { "elementReference": "$Flow.CurrentDate" }
@@ -406,14 +564,37 @@ For before-save flows, use `$Record` to update fields on the triggering record:
 }
 ```
 
-### Record update elements (after-save — update related records)
+### Record update elements (after-save — ANY record, including the triggering one)
 
+**CRITICAL:** In After Save flows, you MUST use the filter-based pattern for every record update — even when updating the triggering record itself. The `inputReference: "$Record"` shortcut is a **Before Save only** pattern. Using it in an After Save flow causes Salesforce to return the useless error:
+> *An unexpected error occurred. Please include this ErrorId if you contact support: ...*
+
+Use the `object` + `filters` + `inputAssignments` pattern in After Save flows:
+
+**Updating the triggering record (After Save):**
+```json
+{
+  "name": "Assign_Owner",
+  "label": "Assign Owner",
+  "object": "Lead",
+  "filterLogic": "and",
+  "filters": [{
+    "field": "Id",
+    "operator": "EqualTo",
+    "value": { "elementReference": "$Record.Id" }
+  }],
+  "inputAssignments": [{
+    "field": "OwnerId",
+    "value": { "stringValue": "00GXXXXXXXXXXXX" }
+  }]
+}
+```
+
+**Updating a related record (After Save):**
 ```json
 {
   "name": "Update_Parent_Account",
   "label": "Update Parent Account",
-  "locationX": 0,
-  "locationY": 0,
   "object": "Account",
   "filterLogic": "and",
   "filters": [{
@@ -427,6 +608,10 @@ For before-save flows, use `$Record` to update fields on the triggering record:
   }]
 }
 ```
+
+**Why this quirk exists:** Before Save flows modify the triggering record in memory before it's saved — there's nothing to query. After Save flows run after the record is already in the database, so every update (including the triggering record itself) must go through a filtered DML operation. The `inputReference: "$Record"` shortcut doesn't apply because there's no in-memory record to write to directly.
+
+**Rule of thumb:** if `triggerType: "RecordAfterSave"`, you should have ZERO occurrences of `inputReference` in your recordUpdates. Every element needs `object` + `filters` + `inputAssignments`.
 
 ### Record create elements
 
@@ -834,6 +1019,26 @@ Building a flow is ALWAYS a two-turn process:
 
 A single response must NEVER contain both a plan/diagram AND a `create_flow` / `update_flow` call. The diagram tool call itself does NOT count as confirmation — after generating the diagram, end the turn and let the user review it.
 
+### CRITICAL — state "create new" vs "update existing" unambiguously in the plan
+
+Users get confused when plans use ambiguous phrases like *"this new flow will add to that automation"*, *"I'll extend the existing flow"*, or *"this will be part of the Lead automation"*. These readings are ambiguous — they can mean either "create a separate flow" or "modify the existing flow", and a user reading the plan may assume the opposite of what you intend.
+
+**Every flow-related plan MUST include one of these two explicit statements, verbatim or close to it:**
+
+- ✅ **"I will CREATE A NEW flow called `<API_Name>`"** — followed by why you're creating a new one instead of updating an existing one (e.g. *"the existing `Lead_After_Insert_Update` flow handles different logic — keeping this separate for clarity"*, or *"the existing flow is too large to edit in-chat"*, or *"no existing flow on this object matches this use case"*)
+- ✅ **"I will UPDATE the existing flow `<API_Name>`"** — followed by what elements you're adding/modifying
+
+Never use these ambiguous phrasings:
+- ❌ "This new flow will add to that automation" (add to WHAT — the collection, or the flow?)
+- ❌ "I'll extend the Lead automation with this logic"
+- ❌ "I'll build on top of the existing flow"
+- ❌ "This flow will work alongside the existing one" (clearer, but still worth stating "create new" explicitly)
+- ❌ "Let me incorporate this into the existing flow" (unless you actually will — then also say "UPDATE the existing flow X")
+
+**When an existing flow is present on the same trigger object + trigger type:** Check the existing flow's purpose FIRST. If your new requirement genuinely belongs in the existing flow (related logic, same trigger, reasonable combined size), offer to UPDATE it. If it's genuinely separate (different concerns, or the existing flow is too large to edit safely — see `get_flow_definition` size warning), CREATE NEW and explain why. Either way, say which one explicitly in the plan.
+
+**When you commit in the plan to updating an existing flow, you MUST use `update_flow` in the build turn.** Never say "I'll update the existing flow" and then call `create_flow` with a new API name. That's a contract violation and will confuse the user.
+
 ## Flow best practices
 
 1. **Before Save vs After Save** — see the "CRITICAL: Before Save vs After Save" section near the top of this doc. Before Save is a hard Salesforce constraint, not a preference: Action Calls, email sends, cross-record DML, and Custom Errors are forbidden in Before Save flows. When in doubt, pick After Save.
@@ -904,6 +1109,10 @@ The error handler can:
 | Cross-object fields through Lookups (`$Record.Account.Website` inside a formula or condition) | Flows cannot traverse lookups from `$Record` in most contexts | Add a `recordLookups` to Get the related Account, then reference `Get_Account.Website` |
 | Inventing "End" terminator elements like `End_Flow`, `End_No_Account` | No such element type exists; causes `Invalid element reference X not found for target` | Omit the `connector` / `defaultConnector` to end a path |
 | `TEXT()` called on a value that is already Text | `Incorrect parameter type for function 'TEXT()'. Expected Number, Date, Date/Time, Picklist, received Text` | Don't wrap strings in `TEXT()` — it only converts Number/Date/DateTime/Picklist → Text. Reference the value directly. |
+| `inputReference: "$Record"` on recordUpdates in an After Save flow | Silent failure: Salesforce returns `An unexpected error occurred. Please include this ErrorId if you contact support: ...` | `inputReference: "$Record"` is Before Save only. In After Save, use `object: "Lead" + filters: [{field: "Id", operator: "EqualTo", value: {elementReference: "$Record.Id"}}] + inputAssignments` even when updating the triggering record itself. See the "Record update elements (after-save)" section. |
+| `apiVersion` sent as a number like `62` instead of string `"62.0"` | Tooling API silently rejects with generic `unexpected error` | Always use `"apiVersion": "62.0"` — string, with `.0` suffix. |
+| `environments` sent as array `["Default"]` instead of string `"Default"` | Tooling API silently rejects | Always use `"environments": "Default"` — plain string. |
+| `filterLogic: "or"` with only 0 or 1 filter | Nonsense — OR needs at least 2 operands | Use `"filterLogic": "and"` for single-filter lookups. The value doesn't matter when there's one filter, but `and` is the safe default. |
 | Element ordering in XML | Root-level elements must be in alphabetical order | Sort: `actionCalls`, `assignments`, `decisions`, `formulas`, `recordCreates`, `recordLookups`, `recordUpdates`, `start`, `variables` |
 | Missing `processMetadataValues` | Flow Builder won't render properly | Always include BuilderType, CanvasMode, OriginBuilderType |
 
@@ -942,33 +1151,51 @@ Then reference the owner's email anywhere in the flow as `Get_Contact_Owner.Emai
 
 ## Subflow patterns
 
-### When to use subflows
-- **Reusable logic** shared across multiple flows (e.g., error logging, email alerts, record validation)
-- **Breaking up complex flows** — keep each flow focused on one responsibility
-- **Testability** — subflows can be tested independently
+### CRITICAL — NEVER invent subflow references
 
-### Calling a subflow
+Only reference a subflow via the `subflows` element if you have **verified** the subflow exists in the org. Invented subflow references cause the deploy to fail with *"The flow X doesn't exist"* and waste a turn.
+
+**Default behavior: inline the logic.** When you need reusable behavior like "send an email with error details" or "log a failure", write the action calls and assignments DIRECTLY in the main flow — do NOT create or reference a subflow. Subflows add complexity without benefit for single-use logic.
+
+**Use subflows ONLY when one of these is true:**
+1. The user has explicitly asked you to create or reuse a subflow
+2. You have verified via `list_flows` or `query_salesforce` on `FlowDefinitionView` that the subflow already exists AND confirmed its purpose matches your need
+3. You are building the subflow FIRST (via create_flow with `processType: "AutoLaunchedFlow"` and no trigger), activating it, and THEN referencing it from the parent flow in a follow-up step
+
+**Never do this:**
+- Add a `subflows` element with a flowName you made up based on "what seems like a reasonable subflow name"
+- Reference a subflow you've seen in a documentation example (the examples below are illustrative patterns, not real flows in your org)
+- Speculate that a "Sub_SendEmailAlert" or "Sub_LogError" exists because it would be convenient
+
+The pre-deploy validator will reject any flow that references a non-existent subflow.
+
+### Calling an existing, verified subflow
+
+If you've confirmed the subflow exists, call it like this:
+
 ```json
 {
   "name": "Log_Error",
   "label": "Log Error",
-  "actionType": "subflow",
-  "actionName": "Sub_LogError",
+  "flowName": "Verified_Existing_Subflow_Name",
   "connector": { "targetReference": "Next_Element" },
-  "inputParameters": [
+  "inputAssignments": [
     { "name": "ErrorMessage", "value": { "elementReference": "$Flow.FaultMessage" } },
-    { "name": "FlowName", "value": { "stringValue": "My_Flow_Name" } },
     { "name": "RecordId", "value": { "elementReference": "$Record.Id" } }
   ]
 }
 ```
 
-### Common reusable subflow ideas
-| Subflow | Purpose | Inputs |
-|---|---|---|
-| `Sub_LogError` | Write error details to an Error_Log__c record | ErrorMessage, FlowName, RecordId |
-| `Sub_SendEmailAlert` | Send a notification email | RecipientId, Subject, Body |
-| `Sub_ValidateRecord` | Check required fields and business rules before save | RecordId, ObjectType |
+Note: in the Flow metadata XML, subflow elements live in the top-level `subflows` array (not `actionCalls`). The element's `flowName` field references the API name of another flow. Do NOT put subflow calls in `actionCalls`.
+
+### Example subflow purposes (illustrative only — do NOT reference these names)
+
+These are ideas for what kinds of reusable logic make good subflows **if the user explicitly asks you to build them**. The names in this list are just examples — they don't exist in any org by default and must not be referenced from your flow unless you have built them yourself or the user has confirmed they exist:
+
+- Error logging to a custom object
+- Sending notification emails with a consistent template
+- Validating required fields across multiple objects
+- Looking up the right approver for an approval chain
 
 ## Flow testing checklist
 
