@@ -1390,7 +1390,7 @@ Every `fields` entry in a screen MUST have a `fieldType`. These are the valid ty
 - `"String"` — text input (NOT "Text" — same rule as flow variables)
 - `"Number"` — numeric input (add `scale` for decimal places)
 - `"Currency"` — currency input (add `scale` for decimal places)
-- `"Boolean"` — checkbox/toggle
+- `"Boolean"` — checkbox/toggle. **Do NOT set `isRequired: false` on Boolean InputFields** — Salesforce rejects it. Omit `isRequired` entirely (checkboxes are inherently optional: unchecked = false).
 - `"Date"` — date picker
 - `"DateTime"` — date+time picker
 
@@ -1776,6 +1776,7 @@ This flow is launched from a button on the Account record page. It shows the acc
 | Missing `dataType` on InputField | `"X" must have a data type` | Always include `dataType: "String"` (or Number, Boolean, Date, etc.) on every InputField |
 | Using `dataType: "Text"` | `'Text' is not a valid value for the enum 'FlowDataType'` | Use `"String"` (same rule as flow variables) |
 | `allowBack: false` AND `allowFinish: false` | `You can set either allowFinish or allowBack to false, but not both` | At least one must be `true` |
+| `isRequired: false` on a Boolean InputField | `isRequired can't be set to false for screen input fields of type boolean` | Omit `isRequired` entirely on Boolean InputFields, or set it to `true`. Checkboxes are inherently optional (unchecked = false). |
 | `IsNull` on a Get Records result in a visibility rule | `condition doesn't support "X" Is null` | Check a specific field: `Get_X.Id IsNull` instead of `Get_X IsNull` |
 | Referencing screen input in decision without `dataType` | `Screen Component "X" must have a data type` | Add `dataType` to the InputField definition |
 | Duplicate screen field names across flows in the org | `Duplicate developer name: X` | Use unique, descriptive names: `Scr1_BillingCity` not `BillingCity` |
