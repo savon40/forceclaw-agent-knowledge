@@ -1243,6 +1243,547 @@ These are ideas for what kinds of reusable logic make good subflows **if the use
 - Validating required fields across multiple objects
 - Looking up the right approver for an approval chain
 
+## Screen Flows — interactive wizard flows (processType: "Flow")
+
+Screen Flows are interactive flows launched via buttons, links, or Lightning pages. They present one or more screens where the user fills out information, then the flow processes the data (creates records, sends emails, updates fields, etc.). They are fundamentally different from record-triggered flows.
+
+### Key differences from record-triggered flows
+
+| | Record-Triggered | Screen Flow |
+|---|---|---|
+| `processType` | `AutoLaunchedFlow` | `Flow` |
+| `start` element | Has `triggerType`, `object`, `recordTriggerType`, `filters` | Has only `connector` pointing to the first element — **no trigger config** |
+| `$Record` | Available (the triggering record) | **NOT available** — use a `recordId` input variable + Get Records |
+| Screens | Not allowed | Required — at least one `screens` element |
+| User interaction | None — runs in background | User sees screens, fills inputs, clicks Next/Finish |
+| Launch method | Automatic on record save | Button, Quick Action, Lightning page, URL |
+
+### Start element for Screen Flows
+
+Screen Flows have a minimal `start` element — just a connector:
+
+```json
+{
+  "start": {
+    "locationX": 50,
+    "locationY": 0,
+    "connector": { "targetReference": "First_Element" }
+  }
+}
+```
+
+**No `object`, no `triggerType`, no `recordTriggerType`, no `filters`.** If you include any of these, Salesforce will reject the flow.
+
+### The `recordId` input variable pattern
+
+Most Screen Flows are launched from a record page and need to know which record to work with. Use an input variable named `recordId`:
+
+```json
+{
+  "variables": [
+    {
+      "name": "recordId",
+      "dataType": "String",
+      "isCollection": false,
+      "isInput": true,
+      "isOutput": false
+    }
+  ]
+}
+```
+
+Salesforce automatically populates `recordId` when the flow is launched from a record page button/action. Then use it in a Get Records lookup to fetch the record:
+
+```json
+{
+  "recordLookups": [
+    {
+      "name": "Get_Account",
+      "label": "Get Account",
+      "object": "Account",
+      "filterLogic": "and",
+      "filters": [{ "field": "Id", "operator": "EqualTo", "value": { "elementReference": "recordId" } }],
+      "getFirstRecordOnly": true,
+      "storeOutputAutomatically": true,
+      "connector": { "targetReference": "Screen_1" }
+    }
+  ]
+}
+```
+
+### Screen element structure
+
+Each screen is a `screens` array entry with fields, navigation, and a connector:
+
+```json
+{
+  "screens": [
+    {
+      "name": "Confirm_Details",
+      "label": "Confirm Details",
+      "locationX": 176,
+      "locationY": 200,
+      "allowBack": false,
+      "allowFinish": true,
+      "allowPause": false,
+      "showFooter": true,
+      "showHeader": true,
+      "connector": { "targetReference": "Next_Element" },
+      "fields": [
+        {
+          "name": "WelcomeText",
+          "fieldText": "<p><b>Account:</b> {!Get_Account.Name}</p>",
+          "fieldType": "DisplayText"
+        },
+        {
+          "name": "BillingCity",
+          "fieldText": "Billing City",
+          "fieldType": "InputField",
+          "dataType": "String",
+          "isRequired": false,
+          "defaultValue": { "elementReference": "Get_Account.BillingCity" }
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Navigation rules:**
+- `allowBack` + `allowFinish` — at least one MUST be `true`. Setting both to `false` is rejected.
+- `allowPause` — independent; can be `true` or `false` regardless.
+- The last screen in a wizard should have `allowFinish: true`.
+- Middle screens typically have `allowBack: true, allowFinish: false`.
+
+### Screen field types — CRITICAL reference
+
+Every `fields` entry in a screen MUST have a `fieldType`. These are the valid types:
+
+#### DisplayText — read-only HTML text
+
+```json
+{
+  "name": "InfoMessage",
+  "fieldText": "<p><b>Account:</b> {!Get_Account.Name}</p>",
+  "fieldType": "DisplayText"
+}
+```
+
+- `fieldText` contains HTML. Flow variable references use `{!VarName}` syntax.
+- **No `dataType` needed** — display-only.
+- **No `name` attribute is technically needed** for display text, but include one for clarity.
+
+#### InputField — user text/number/date/boolean input
+
+```json
+{
+  "name": "UserCity",
+  "fieldText": "City",
+  "fieldType": "InputField",
+  "dataType": "String",
+  "isRequired": false,
+  "defaultValue": { "elementReference": "Get_Account.BillingCity" }
+}
+```
+
+**CRITICAL: `dataType` is REQUIRED on every InputField.** Without it, Salesforce errors with *"must have a data type"*. Valid values:
+- `"String"` — text input (NOT "Text" — same rule as flow variables)
+- `"Number"` — numeric input (add `scale` for decimal places)
+- `"Currency"` — currency input (add `scale` for decimal places)
+- `"Boolean"` — checkbox/toggle
+- `"Date"` — date picker
+- `"DateTime"` — date+time picker
+
+**For Currency/Number InputFields**, also include `scale`:
+```json
+{
+  "name": "Amount",
+  "fieldText": "Amount",
+  "fieldType": "InputField",
+  "dataType": "Currency",
+  "isRequired": true,
+  "scale": 2,
+  "defaultValue": { "elementReference": "Get_Opportunity.Amount" }
+}
+```
+
+#### ObjectProvided — display/edit a field from a record variable
+
+Shows a Salesforce field from a Get Records result, with the field's native UI (lookup picker, picklist dropdown, etc.):
+
+```json
+{
+  "fieldType": "ObjectProvided",
+  "isRequired": false,
+  "objectFieldReference": "Get_Opportunity.StageName",
+  "inputsOnNextNavToAssocScrn": "UseStoredValues"
+}
+```
+
+- **No `name` needed** — the field reference identifies it.
+- **No `dataType` needed** — inherited from the referenced field.
+- `inputsOnNextNavToAssocScrn: "UseStoredValues"` — preserves user input when navigating back.
+
+#### LargeTextArea — multi-line text input
+
+```json
+{
+  "name": "Notes",
+  "fieldText": "Notes",
+  "fieldType": "LargeTextArea",
+  "isRequired": false
+}
+```
+
+- LargeTextArea **does NOT need an explicit `dataType`** — it's implicitly String.
+- Do NOT add `dataType: "String"` on LargeTextArea — it's unnecessary and can cause errors in some contexts.
+
+### Layout: RegionContainer and Region (two-column layouts)
+
+To create side-by-side columns on a screen:
+
+```json
+{
+  "name": "Details_Section",
+  "fieldType": "RegionContainer",
+  "regionContainerType": "SectionWithoutHeader",
+  "isRequired": false,
+  "fields": [
+    {
+      "name": "Left_Column",
+      "fieldType": "Region",
+      "isRequired": false,
+      "inputParameters": [{ "name": "width", "value": { "stringValue": "6" } }],
+      "fields": [
+        { "fieldType": "ObjectProvided", "objectFieldReference": "Get_Account.Name", "isRequired": false },
+        { "fieldType": "ObjectProvided", "objectFieldReference": "Get_Account.Industry", "isRequired": false }
+      ]
+    },
+    {
+      "name": "Right_Column",
+      "fieldType": "Region",
+      "isRequired": false,
+      "inputParameters": [{ "name": "width", "value": { "stringValue": "6" } }],
+      "fields": [
+        { "fieldType": "ObjectProvided", "objectFieldReference": "Get_Account.Phone", "isRequired": false },
+        { "fieldType": "ObjectProvided", "objectFieldReference": "Get_Account.Website", "isRequired": false }
+      ]
+    }
+  ]
+}
+```
+
+- `regionContainerType`: `"SectionWithoutHeader"` or `"SectionWithHeader"`
+- Column `width`: `"6"` = half width (12-column grid). Two columns at `"6"` = side by side.
+- `isRequired: false` is needed on the container, each region, and each field.
+
+### Referencing screen inputs in downstream elements
+
+Screen input values are referenced by their `name`, not by a variable:
+
+```json
+{
+  "decisions": [
+    {
+      "name": "Check_Send_Email",
+      "rules": [{
+        "conditions": [{
+          "leftValueReference": "SendEmailCheckbox",
+          "operator": "EqualTo",
+          "rightValue": { "booleanValue": true }
+        }],
+        "connector": { "targetReference": "Send_Email" }
+      }]
+    }
+  ]
+}
+```
+
+Where `SendEmailCheckbox` is the `name` of a Boolean InputField on a previous screen.
+
+**CRITICAL: when referencing a screen input in a decision condition, that screen input MUST have a `dataType` set.** If the InputField doesn't have `dataType`, the condition fails with *"Screen Component X must have a data type"*.
+
+### Screen input → record update mapping
+
+When updating a record with values the user entered on a screen:
+
+```json
+{
+  "recordUpdates": [
+    {
+      "name": "Update_Account",
+      "object": "Account",
+      "filterLogic": "and",
+      "filters": [{ "field": "Id", "operator": "EqualTo", "value": { "elementReference": "recordId" } }],
+      "inputAssignments": [
+        { "field": "BillingCity", "value": { "elementReference": "UserCity" } },
+        { "field": "BillingState", "value": { "elementReference": "UserState" } }
+      ]
+    }
+  ]
+}
+```
+
+**The `elementReference` uses the screen field's `name` directly** — `UserCity` references the InputField named `UserCity` on a previous screen.
+
+**IMPORTANT for record updates using screen inputs:** the screen field and the target Salesforce field must have compatible types. If you map a String screen input to a Number field, Salesforce will reject it at runtime. Use `describe_object` to check the target field type before building the mapping.
+
+### Visibility rules on screen fields — what works and what doesn't
+
+Screen fields support visibility conditions that show/hide the field based on runtime values:
+
+**Works:**
+```json
+{
+  "visibilityRule": {
+    "conditionLogic": "and",
+    "conditions": [{
+      "leftValueReference": "ShowDetailsCheckbox",
+      "operator": "EqualTo",
+      "rightValue": { "booleanValue": true }
+    }]
+  }
+}
+```
+
+**Does NOT work — checking if a Get Records result is null:**
+```json
+{
+  "visibilityRule": {
+    "conditionLogic": "and",
+    "conditions": [{
+      "leftValueReference": "Get_Primary_Contact",
+      "operator": "IsNull",
+      "rightValue": { "booleanValue": false }
+    }]
+  }
+}
+```
+
+This fails with: *"In a Screen Component, a condition doesn't support 'Get_Primary_Contact' Is null."*
+
+**Fix:** instead of checking `IsNull` on the entire record variable, check a specific field:
+```json
+{
+  "leftValueReference": "Get_Primary_Contact.Id",
+  "operator": "IsNull",
+  "rightValue": { "booleanValue": false }
+}
+```
+
+Or use a formula/variable that evaluates to Boolean and check that:
+```json
+{
+  "leftValueReference": "HasPrimaryContact",
+  "operator": "EqualTo",
+  "rightValue": { "booleanValue": true }
+}
+```
+
+### Validation rules on screen fields
+
+Screen InputFields support inline validation:
+
+```json
+{
+  "name": "KickoffDate",
+  "fieldText": "Kickoff Call Date",
+  "fieldType": "InputField",
+  "dataType": "Date",
+  "isRequired": true,
+  "validationRule": {
+    "errorMessage": "Date must be in the future",
+    "formulaExpression": "{!KickoffDate} > {!$Flow.CurrentDate}"
+  }
+}
+```
+
+The validation runs when the user clicks Next/Finish. If it fails, the error message appears below the field.
+
+### Error handling in Screen Flows
+
+Screen Flows can show error screens instead of sending emails (since the user is present):
+
+```json
+{
+  "screens": [
+    {
+      "name": "Error_Screen",
+      "label": "Error",
+      "allowBack": true,
+      "allowFinish": true,
+      "showFooter": true,
+      "showHeader": true,
+      "fields": [{
+        "name": "ErrorText",
+        "fieldType": "DisplayText",
+        "fieldText": "<p style=\"color: red;\"><b>An error occurred:</b> {!$Flow.FaultMessage}</p>"
+      }]
+    }
+  ]
+}
+```
+
+Use `faultConnector` on DML elements to route to the error screen:
+```json
+{
+  "recordCreates": [{
+    "name": "Create_Record",
+    "faultConnector": { "targetReference": "Error_Screen" },
+    "connector": { "targetReference": "Success_Screen" },
+    ...
+  }]
+}
+```
+
+### COMPLETE EXAMPLE: Simple Screen Flow launched from Account record
+
+This flow is launched from a button on the Account record page. It shows the account name, lets the user enter notes, and creates a Task.
+
+```json
+{
+  "processType": "Flow",
+  "apiVersion": "62.0",
+  "status": "Active",
+  "label": "Create Follow-up Task",
+  "interviewLabel": "Create Follow-up Task {!$Flow.CurrentDateTime}",
+  "environments": "Default",
+  "processMetadataValues": [
+    { "name": "BuilderType", "value": { "stringValue": "LightningFlowBuilder" } },
+    { "name": "CanvasMode", "value": { "stringValue": "AUTO_LAYOUT_CANVAS" } },
+    { "name": "OriginBuilderType", "value": { "stringValue": "LightningFlowBuilder" } }
+  ],
+  "start": {
+    "locationX": 50,
+    "locationY": 0,
+    "connector": { "targetReference": "Get_Account" }
+  },
+  "variables": [
+    { "name": "recordId", "dataType": "String", "isCollection": false, "isInput": true, "isOutput": false }
+  ],
+  "recordLookups": [
+    {
+      "name": "Get_Account",
+      "label": "Get Account",
+      "object": "Account",
+      "filterLogic": "and",
+      "filters": [{ "field": "Id", "operator": "EqualTo", "value": { "elementReference": "recordId" } }],
+      "getFirstRecordOnly": true,
+      "storeOutputAutomatically": true,
+      "connector": { "targetReference": "Task_Screen" }
+    }
+  ],
+  "screens": [
+    {
+      "name": "Task_Screen",
+      "label": "Create Follow-up Task",
+      "locationX": 176,
+      "locationY": 200,
+      "allowBack": false,
+      "allowFinish": true,
+      "allowPause": false,
+      "showFooter": true,
+      "showHeader": true,
+      "connector": { "targetReference": "Create_Task" },
+      "fields": [
+        {
+          "name": "AccountInfo",
+          "fieldType": "DisplayText",
+          "fieldText": "<p><b>Account:</b> {!Get_Account.Name}</p>"
+        },
+        {
+          "name": "TaskSubject",
+          "fieldText": "Task Subject",
+          "fieldType": "InputField",
+          "dataType": "String",
+          "isRequired": true,
+          "defaultValue": { "stringValue": "Follow-up" }
+        },
+        {
+          "name": "TaskDueDate",
+          "fieldText": "Due Date",
+          "fieldType": "InputField",
+          "dataType": "Date",
+          "isRequired": true
+        },
+        {
+          "name": "TaskNotes",
+          "fieldText": "Notes",
+          "fieldType": "LargeTextArea",
+          "isRequired": false
+        }
+      ]
+    },
+    {
+      "name": "Success_Screen",
+      "label": "Success",
+      "locationX": 176,
+      "locationY": 600,
+      "allowBack": false,
+      "allowFinish": true,
+      "allowPause": false,
+      "showFooter": true,
+      "showHeader": true,
+      "fields": [{
+        "name": "SuccessText",
+        "fieldType": "DisplayText",
+        "fieldText": "<p><b>Task created successfully.</b></p>"
+      }]
+    },
+    {
+      "name": "Error_Screen",
+      "label": "Error",
+      "locationX": 400,
+      "locationY": 400,
+      "allowBack": true,
+      "allowFinish": true,
+      "allowPause": false,
+      "showFooter": true,
+      "showHeader": true,
+      "fields": [{
+        "name": "ErrorText",
+        "fieldType": "DisplayText",
+        "fieldText": "<p style=\"color: red;\">Error: {!$Flow.FaultMessage}</p>"
+      }]
+    }
+  ],
+  "recordCreates": [
+    {
+      "name": "Create_Task",
+      "label": "Create Follow-up Task",
+      "locationX": 176,
+      "locationY": 400,
+      "object": "Task",
+      "connector": { "targetReference": "Success_Screen" },
+      "faultConnector": { "targetReference": "Error_Screen" },
+      "inputAssignments": [
+        { "field": "Subject", "value": { "elementReference": "TaskSubject" } },
+        { "field": "ActivityDate", "value": { "elementReference": "TaskDueDate" } },
+        { "field": "Description", "value": { "elementReference": "TaskNotes" } },
+        { "field": "WhatId", "value": { "elementReference": "recordId" } },
+        { "field": "OwnerId", "value": { "elementReference": "$User.Id" } },
+        { "field": "Status", "value": { "stringValue": "Not Started" } }
+      ]
+    }
+  ]
+}
+```
+
+### Common Screen Flow mistakes — DO NOT make these
+
+| Mistake | Error message | Fix |
+|---|---|---|
+| Missing `dataType` on InputField | `"X" must have a data type` | Always include `dataType: "String"` (or Number, Boolean, Date, etc.) on every InputField |
+| Using `dataType: "Text"` | `'Text' is not a valid value for the enum 'FlowDataType'` | Use `"String"` (same rule as flow variables) |
+| `allowBack: false` AND `allowFinish: false` | `You can set either allowFinish or allowBack to false, but not both` | At least one must be `true` |
+| `IsNull` on a Get Records result in a visibility rule | `condition doesn't support "X" Is null` | Check a specific field: `Get_X.Id IsNull` instead of `Get_X IsNull` |
+| Referencing screen input in decision without `dataType` | `Screen Component "X" must have a data type` | Add `dataType` to the InputField definition |
+| Duplicate screen field names across flows in the org | `Duplicate developer name: X` | Use unique, descriptive names: `Scr1_BillingCity` not `BillingCity` |
+| Collection variable with `value` and `isCollection: true` | `The value field isn't supported when isCollection is set to true` | Don't set `value`/`defaultValue` on collection variables — populate via Assignment elements |
+| `$Record` reference in a Screen Flow | `$Record` is not available | Use `recordId` input variable + Get Records lookup |
+
+---
+
 ## Flow testing checklist
 
 Before activating any flow, verify:
