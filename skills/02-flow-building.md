@@ -1769,6 +1769,37 @@ This flow is launched from a button on the Account record page. It shows the acc
 }
 ```
 
+### Launching a Screen Flow from a record page
+
+Screen Flows need a Quick Action to be launchable from a record page button. Use the `create_quick_action` tool:
+
+```
+create_quick_action(
+  object_name="Account",
+  action_name="Start_Onboarding",
+  label="Start Onboarding",
+  type="Flow",
+  flow_definition="Account_Onboarding_Screen_Flow",
+  description="Launch the customer onboarding wizard"
+)
+```
+
+**Quick Actions CANNOT be created via Apex** — do NOT use `execute_anonymous_apex` for this. The `create_quick_action` tool uses the Metadata API.
+
+After creating the Quick Action, **add it to the relevant page layout(s)** using `update_page_layout` with `action: "add_action"`:
+
+```
+update_page_layout(
+  layout_full_name="Account-Account Layout",
+  action="add_action",
+  field_api_name="Account.Start_Onboarding"
+)
+```
+
+This adds the button to the layout's Quick Actions section so it's visible on record pages. Do this for each layout the user wants the button on. Use `list_page_layouts` first to see available layouts.
+
+For **Lightning Record Pages** (FlexiPages), the button appears automatically if the page has a Highlights Panel or Actions component — no additional configuration needed beyond the page layout.
+
 ### Common Screen Flow mistakes — DO NOT make these
 
 | Mistake | Error message | Fix |
