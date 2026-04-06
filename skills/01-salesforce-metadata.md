@@ -119,7 +119,7 @@ LIMIT 50
 | `WorkflowRule` | `Name`, `TableEnumOrId` | Legacy workflow rules — NOT in standard SOQL |
 | `FlowDefinition` | `DeveloperName`, `MasterLabel`, `ActiveVersionId`, `LatestVersionId`, `Description` — does NOT have ProcessType, TriggerType, Status | Flow metadata (prefer FlowDefinitionView for listing) |
 | `Flow` | `Id`, `DefinitionId`, `FullName`, `MasterLabel`, `ProcessType`, `Status`, `VersionNumber`, `Metadata`, `ApiVersion`, `Description`, `Environments`, `IsTemplate`, `ManageableState`, `RunInMode`, `TimeZoneSidKey` — does NOT have `DeveloperName`, `TriggerType`, `RecordTriggerType`, `TriggerObjectOrEventLabel`. To find by name, query `FlowDefinition` first by `DeveloperName`, then get `Flow` by version ID. | Flow version metadata via Tooling API only |
-| `CustomField` | `DeveloperName`, `TableEnumOrId`, `DataType` | Custom field definitions |
+| `CustomField` | `DeveloperName`, `FullName`, `TableEnumOrId`, `EntityDefinitionId`, `EntityDefinition.QualifiedApiName` (parent filter), `Metadata` (JSON blob with type/length/picklist/etc.) | Custom field definitions — see "CustomField field reference" below for the full list |
 | `ApexClass` | `Name`, `Body`, `Status`, `ApiVersion` | Apex class metadata + source code |
 | `ApexTrigger` | `Name`, `Body`, `TableEnumOrId`, `Status` | Trigger metadata + source code |
 | `LightningComponentBundle` | `DeveloperName`, `MasterLabel`, `ApiVersion` | LWC bundles — Tooling API only |
@@ -201,11 +201,46 @@ To check if a Flow is active: `ActiveVersionId` is not null.
 
 ### CustomField ← TOOLING API ONLY
 Use tool: **`query_tooling`** (NOT `query_salesforce` — will error)
+
+**CRITICAL — CustomField has a limited set of top-level queryable columns. Most field attributes (type, length, picklist values, formula, etc.) live INSIDE a `Metadata` JSON blob, not as top-level columns.** Official reference: https://developer.salesforce.com/docs/atlas.en-us.api_tooling.meta/api_tooling/tooling_api_objects_customfield.htm
+
+**Top-level queryable columns on CustomField:**
+- `Id`
+- `DeveloperName` — the field's API name WITHOUT the `__c` suffix (e.g. `My_Field`, not `My_Field__c`)
+- `FullName` — `Object__c.Field__c` style full name (including suffix)
+- `TableEnumOrId` — standard object API name OR 15-char EntityDefinition Id for custom objects. **DO NOT filter by this for custom objects** — use `EntityDefinition.QualifiedApiName` instead (see below).
+- `EntityDefinitionId` — 18-char Id of the parent entity
+- `EntityDefinition.QualifiedApiName` — the parent object API name (parent relationship filter — works for both standard AND custom objects)
+- `ManageableState`, `NamespacePrefix`
+- `Metadata` — JSON blob containing `type`, `label`, `description`, `length`, `precision`, `scale`, `required`, `picklistValues`, `formula`, `referenceTo`, `relationshipName`, `deleteConstraint`, etc. **Only returned when querying a single row by Id or filtering by a unique field** (Salesforce limitation).
+- `RelationshipName`, `ReferenceTo` — for Lookup/Master-Detail relationships
+- `CreatedDate`, `LastModifiedDate`
+
+**Columns that DO NOT exist on CustomField** (common mistakes):
+- `DataType` — lives inside `Metadata.type`, NOT as a top-level column
+- `Label` — lives inside `Metadata.label`
+- `Length`, `Precision`, `Scale` — inside `Metadata`
+- `QualifiedApiName` — only on the parent `EntityDefinition` relationship, NOT on CustomField itself
+- `Required` — inside `Metadata.required`
+
+**Listing custom fields on an object (STANDARD or CUSTOM):**
 ```sql
-SELECT Id, DeveloperName, TableEnumOrId, DataType, FullName
+SELECT Id, DeveloperName, FullName
 FROM CustomField
-WHERE TableEnumOrId = 'Account'
+WHERE EntityDefinition.QualifiedApiName = 'Account'
+ORDER BY DeveloperName
 ```
+This works for both standard objects (`Account`) and custom objects (`My_Object__c`). **Always use `EntityDefinition.QualifiedApiName` for the filter, never `TableEnumOrId`** — `TableEnumOrId` contains the 15-char EntityDefinition Id (not the API name) for custom objects, so `WHERE TableEnumOrId = 'My_Object__c'` always returns zero rows for custom objects.
+
+**Getting a field's full metadata (type, length, picklist values, etc.):**
+```sql
+SELECT Id, DeveloperName, FullName, Metadata
+FROM CustomField
+WHERE Id = '00N...'
+```
+The `Metadata` field can only be retrieved one row at a time (by Id or a unique identifier). You cannot include it in multi-row queries.
+
+**If the user asks "what type is field X?"** — describe_object is usually faster than query_tooling. Only use CustomField.Metadata when you need info that describe_object doesn't return (like the raw formula source or deleteConstraint).
 
 ### ApexClass ← TOOLING API ONLY
 Use tool: **`query_tooling`** (NOT `query_salesforce` — will error)
@@ -261,13 +296,17 @@ Run these queries and combine the results:
 4. Apex triggers — **use `query_tooling`**: `SELECT ... FROM ApexTrigger WHERE TableEnumOrId = '[Object]'`
 
 ### "What fields were recently added?"
-**Use `query_tooling`** (CustomField is Tooling API only):
+**Use `query_tooling`** (CustomField is Tooling API only). Note: CustomField does NOT have a `DataType` top-level column — that info is inside the `Metadata` JSON blob. For a "what fields" summary, stick to simple columns:
 ```sql
-SELECT DeveloperName, TableEnumOrId, DataType, CreatedDate
+SELECT Id, DeveloperName, FullName, CreatedDate, CreatedBy.Name
 FROM CustomField
 WHERE CreatedDate = LAST_N_DAYS:30
 ORDER BY CreatedDate DESC
 LIMIT 50
+```
+If you need the type of a specific field, query by `Id` and include `Metadata` (type lives in `Metadata.type`):
+```sql
+SELECT Id, FullName, Metadata FROM CustomField WHERE Id = '00N...'
 ```
 
 ### "Show me formula fields on [Object]"

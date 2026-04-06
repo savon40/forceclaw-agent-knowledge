@@ -841,6 +841,52 @@ If the model is stuck in a retry loop on `emailSimple`, DO NOT pivot to `create_
 
 ---
 
+## Posting to Chatter from a Flow — `chatterPost` action
+
+The `chatterPost` core action posts a Chatter feed item to a record. **It only works if Chatter is enabled in the org.** If Chatter is disabled, the deploy will fail with:
+> *"We can't find an action with the name and action type that you specified."*
+
+### Working pattern
+
+```json
+{
+  "name": "Post_Chatter_Update",
+  "label": "Post Chatter Update",
+  "actionName": "chatterPost",
+  "actionType": "chatterPost",
+  "flowTransactionModel": "CurrentTransaction",
+  "nameSegment": "chatterPost",
+  "versionString": "1",
+  "inputParameters": [
+    { "name": "text", "value": { "stringValue": "Deal closed! Handoff record created." } },
+    { "name": "subjectNameOrId", "value": { "elementReference": "$Record.Id" } }
+  ]
+}
+```
+
+**Input parameters:**
+- `text` (required) — the post body. Can use flow variable references like `{!MyVariable}` inside text templates.
+- `subjectNameOrId` (required) — the record ID to post on (usually `$Record.Id` or another record's Id from a lookup).
+
+**Parameters that DO NOT exist** (common model mistakes):
+- ❌ `mentionedUsers` — not a valid input parameter for `chatterPost`
+- ❌ `visibility` — not available
+- ❌ `communityId` — not available in the standard chatterPost action
+
+To @mention users in a Chatter post, include the mention syntax in the `text` body: `@[005XXXXXXXXXXXX]` (user Id). But note this requires hardcoding the user Id, which violates the "never hardcode IDs" rule — consider looking up the user and building the mention string dynamically.
+
+### When `chatterPost` fails
+
+If the deploy fails with "can't find an action with the name and action type", Chatter is likely disabled in this org. Do NOT retry — instead:
+
+1. Tell the user: *"The Chatter post action isn't available in this org — Chatter may not be enabled. I can use an alternative: [options below]"*
+2. Offer alternatives:
+   - **Create a Task** instead (`recordCreates` element) — visible in the record's activity timeline
+   - **Send an email notification** — use `emailSimple` (already documented above)
+   - **Create a FeedItem via Apex** — use `execute_anonymous_apex` if the user specifically wants a feed post and Chatter is just misconfigured
+
+---
+
 ## COMPLETE EXAMPLE: Before Save Validation Flow (Block save with error)
 
 This is the most common pattern admins ask for. "Don't let users do X if Y exists."

@@ -24,9 +24,39 @@ When a user asks you to create a field, gather all of this BEFORE creating it:
 - **Currency/Percent**: decimal places
 - **Picklist**: what are the values? Is there a default? Should it be a restricted picklist?
 - **MultiselectPicklist**: same as picklist + how many visible lines
-- **Lookup/Master-Detail**: which object does it relate to? What is the relationship name?
+- **Lookup/Master-Detail**: which object does it relate to? What is the relationship name? **And — especially if the field is REQUIRED — what should happen when the parent record is deleted?** See "Lookup delete behavior" below.
 - **Formula**: what is the formula? What return type?
 - **LongTextArea/RichTextArea**: visible lines, length
+
+#### Lookup delete behavior — CRITICAL for required lookups
+
+Every Lookup field has a "delete behavior" that controls what happens to this record when the referenced parent is deleted. The `create_custom_field` tool accepts a `delete_behavior` parameter with three values:
+
+| Value | What it does | Valid when required=false | Valid when required=true |
+|---|---|---|---|
+| `SetNull` | Clear the lookup on the child, leaving the child intact. Default for optional lookups. | ✅ | ❌ (rejected by Salesforce) |
+| `Restrict` | Prevent the parent from being deleted while any child still points to it. Safest choice. | ✅ | ✅ (default for required) |
+| `Cascade` | Delete the child record when the parent is deleted. Essentially treats the lookup like a Master-Detail. | ✅ | ✅ |
+
+**If you create a required Lookup without specifying delete_behavior (or with SetNull), Salesforce rejects it with:**
+> *"field integrity exception: unknown (must specify either cascade delete or restrict delete for required lookup foreign key)"*
+
+**When required=true, always pass `delete_behavior: "Restrict"` unless the user tells you Cascade makes more sense.** Restrict is safer: it protects child data, surfaces deletion attempts as errors the user can react to, and mirrors what most admins would expect. Only use Cascade when the child genuinely makes no sense without the parent (e.g. line items → invoice, attachments → main record).
+
+Example — required lookup from a junction record to its parent:
+```
+create_custom_field(
+  object_name="Customer_Success_Handoff__c",
+  field_name="Account",
+  label="Account",
+  type="Lookup",
+  referenced_object="Account",
+  required=true,
+  delete_behavior="Restrict"
+)
+```
+
+When you're about to create a Lookup field, decide the delete behavior during planning and mention it in your plan ("I'll create Account as a required Lookup to Account with Restrict delete behavior"). Don't leave it implicit.
 
 ### 3. Field-Level Security (ALWAYS ask)
 After creating the field, ask:
