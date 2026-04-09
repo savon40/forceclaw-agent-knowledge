@@ -1828,6 +1828,254 @@ Before activating any flow, verify:
 - [ ] **Entry conditions** — verify the flow does NOT fire when conditions are not met
 - [ ] **Before-save only updates $Record** — verify no DML elements exist in before-save flows (they'll fail)
 
+## Scheduled Flow structure (CRITICAL — read before building any scheduled flow)
+
+**MANDATORY RULE: When a user asks for a "scheduled flow", ALWAYS create a native Scheduled Flow using `triggerType: "Scheduled"` with a `schedule` object on the `start` element. NEVER create an Autolaunched Flow + Schedulable Apex class combo. The Apex scheduler approach is over-engineered and unnecessary — Salesforce natively supports scheduled flows via the Metadata API.**
+
+Scheduled flows run on a recurring schedule (daily, weekly, etc.) and process a batch of records or perform background work. They use `processType: "AutoLaunchedFlow"` and `triggerType: "Scheduled"`.
+
+### The `start` element for scheduled flows
+
+The `start` element MUST include a `schedule` object. The schedule object has exactly these properties:
+
+```json
+"start": {
+  "locationX": 50,
+  "locationY": 0,
+  "triggerType": "Scheduled",
+  "connector": {
+    "targetReference": "First_Element_Api_Name"
+  },
+  "schedule": {
+    "frequency": "Weekly",
+    "startDate": "2026-04-14",
+    "startTime": "08:00:00.000Z"
+  }
+}
+```
+
+### `schedule.frequency` valid values
+
+| Value | Meaning |
+|-------|---------|
+| `Once` | Run once at the specified date/time |
+| `Daily` | Run every day at the specified time |
+| `Weekly` | Run every week on the day of `startDate` at the specified time |
+
+**CRITICAL rules:**
+- `frequency`, `startDate`, and `startTime` are the ONLY valid properties inside `schedule`
+- There is NO `daysOfWeek`, `weekdays`, `weeklyDayOfWeek`, `weeklyRecurrence`, `monthlyRecurrence`, or `cronExpression` property — these do NOT exist in the Metadata API and will cause deployment errors
+- Do NOT use `scheduledPaths` for scheduled flows. `scheduledPaths` is for record-triggered flows with async scheduled paths (e.g., "run 1 hour after save"). Scheduled flows use `schedule` directly on `start` — these are completely different things
+- For weekly flows, the day-of-week is determined by the `startDate` — if `startDate` falls on a Monday, the flow runs every Monday
+- `startDate` format: `YYYY-MM-DD` (ISO date, no time component)
+- `startTime` format: `HH:MM:SS.000Z` (UTC time with milliseconds)
+- After activation, admins can modify the schedule in the Flow Builder UI, but the metadata API only supports the three fields above
+
+### How to calculate `startDate` for a specific day of the week
+
+If the user asks "run every Monday at 8am", find the next Monday from today and use that as `startDate`. The flow will then recur weekly on that same day.
+
+If the user asks "run every day at midnight", use tomorrow's date as `startDate` with `frequency: "Daily"` and `startTime: "00:00:00.000Z"`.
+
+### Two patterns for scheduled flows
+
+**Pattern 1: Plain scheduled (no object on start)** — The flow runs on a schedule and the body uses `recordLookups` to query whatever records it needs. Good for complex queries with custom filter logic, multiple objects, or aggregate operations.
+
+**Pattern 2: Scheduled with object + filters on start** — The `start` element includes `object`, `filters`, and optionally `filterLogic`. Salesforce automatically queries matching records and runs the flow once per record (like a record-triggered flow on a schedule). Good for simple "find records matching criteria and do something to each" scenarios.
+
+#### Pattern 2 start element example (object + filters on start):
+
+```json
+"start": {
+  "locationX": 56,
+  "locationY": 0,
+  "triggerType": "Scheduled",
+  "connector": { "targetReference": "First_Element" },
+  "object": "Task",
+  "filterLogic": "and",
+  "filters": [
+    { "field": "Status", "operator": "NotEqualTo", "value": { "stringValue": "Completed" } },
+    { "field": "ActivityDate", "operator": "LessThanOrEqualTo", "value": { "elementReference": "$Flow.CurrentDate" } }
+  ],
+  "schedule": {
+    "frequency": "Daily",
+    "startDate": "2026-04-14",
+    "startTime": "05:00:00.000Z"
+  }
+}
+```
+
+When `object` is specified on start, each matching record is available as `$Record` inside the flow — the same as record-triggered flows. You do NOT need a separate `recordLookups` element.
+
+When `object` is NOT specified on start, there is no `$Record`. Use `recordLookups` in the flow body to query whatever data you need.
+
+### Complete scheduled flow example (Pattern 1) — weekly task creation
+
+This flow runs every Monday at 8am, finds open Opportunities closing within 7 days with no recent activity, and creates follow-up Tasks:
+
+```json
+{
+  "apiVersion": "62.0",
+  "processType": "AutoLaunchedFlow",
+  "environments": "Default",
+  "interviewLabel": "Opp Follow Up Tasks {!$Flow.CurrentDateTime}",
+  "processMetadataValues": [
+    { "name": "BuilderType", "value": { "stringValue": "LightningFlowBuilder" } },
+    { "name": "CanvasMode", "value": { "stringValue": "AUTO_LAYOUT_CANVAS" } },
+    { "name": "OriginBuilderType", "value": { "stringValue": "LightningFlowBuilder" } }
+  ],
+  "start": {
+    "locationX": 50,
+    "locationY": 0,
+    "triggerType": "Scheduled",
+    "connector": { "targetReference": "Get_Opps" },
+    "schedule": {
+      "frequency": "Weekly",
+      "startDate": "2026-04-13",
+      "startTime": "08:00:00.000Z"
+    }
+  },
+  "formulas": [
+    { "name": "SevenDaysFromNow", "dataType": "Date", "expression": "{!$Flow.CurrentDate} + 7" },
+    { "name": "FourteenDaysAgo", "dataType": "Date", "expression": "{!$Flow.CurrentDate} - 14" }
+  ],
+  "variables": [
+    { "name": "TasksToCreate", "dataType": "SObject", "objectType": "Task", "isCollection": true, "isInput": false, "isOutput": false },
+    { "name": "CurrentTask", "dataType": "SObject", "objectType": "Task", "isCollection": false, "isInput": false, "isOutput": false },
+    { "name": "FaultEmailRecipients", "dataType": "String", "isCollection": true, "isInput": false, "isOutput": false }
+  ],
+  "textTemplates": [
+    { "name": "FaultEmailBody", "isViewedAsPlainText": true, "text": "The weekly Opportunity follow-up flow failed.\\nError: {!$Flow.FaultMessage}" }
+  ],
+  "recordLookups": [
+    {
+      "name": "Get_Opps",
+      "label": "Get Opps Closing Soon",
+      "object": "Opportunity",
+      "locationX": 176,
+      "locationY": 134,
+      "getFirstRecordOnly": false,
+      "storeOutputAutomatically": true,
+      "filterLogic": "1 AND 2 AND 3 AND (4 OR 5)",
+      "filters": [
+        { "field": "IsClosed", "operator": "EqualTo", "value": { "booleanValue": false } },
+        { "field": "CloseDate", "operator": "GreaterThanOrEqualTo", "value": { "elementReference": "$Flow.CurrentDate" } },
+        { "field": "CloseDate", "operator": "LessThanOrEqualTo", "value": { "elementReference": "SevenDaysFromNow" } },
+        { "field": "LastActivityDate", "operator": "LessThanOrEqualTo", "value": { "elementReference": "FourteenDaysAgo" } },
+        { "field": "LastActivityDate", "operator": "IsNull", "value": { "booleanValue": true } }
+      ],
+      "connector": { "targetReference": "Check_Results" }
+    }
+  ],
+  "decisions": [
+    {
+      "name": "Check_Results",
+      "label": "Any Opps Found?",
+      "locationX": 176,
+      "locationY": 254,
+      "defaultConnectorLabel": "No Records",
+      "rules": [
+        {
+          "name": "Has_Records",
+          "label": "Has Records",
+          "conditionLogic": "and",
+          "conditions": [
+            { "leftValueReference": "Get_Opps", "operator": "IsNull", "rightValue": { "booleanValue": false } }
+          ],
+          "connector": { "targetReference": "Loop_Opps" }
+        }
+      ]
+    }
+  ],
+  "loops": [
+    {
+      "name": "Loop_Opps",
+      "label": "Loop Opps",
+      "locationX": 264,
+      "locationY": 374,
+      "collectionReference": "Get_Opps",
+      "iterationOrder": "Asc",
+      "nextValueConnector": { "targetReference": "Assign_Task" },
+      "noMoreValuesConnector": { "targetReference": "Create_All_Tasks" }
+    }
+  ],
+  "assignments": [
+    {
+      "name": "Assign_Task",
+      "label": "Assign Task Fields",
+      "locationX": 352,
+      "locationY": 494,
+      "assignmentItems": [
+        { "assignToReference": "CurrentTask.OwnerId", "operator": "Assign", "value": { "elementReference": "Loop_Opps.OwnerId" } },
+        { "assignToReference": "CurrentTask.WhatId", "operator": "Assign", "value": { "elementReference": "Loop_Opps.Id" } },
+        { "assignToReference": "CurrentTask.Subject", "operator": "Assign", "value": { "stringValue": "Follow up required — closing soon" } },
+        { "assignToReference": "CurrentTask.ActivityDate", "operator": "Assign", "value": { "elementReference": "$Flow.CurrentDate" } },
+        { "assignToReference": "CurrentTask.Priority", "operator": "Assign", "value": { "stringValue": "High" } }
+      ],
+      "connector": { "targetReference": "Add_To_Collection" }
+    },
+    {
+      "name": "Add_To_Collection",
+      "label": "Add Task to Collection",
+      "locationX": 352,
+      "locationY": 614,
+      "assignmentItems": [
+        { "assignToReference": "TasksToCreate", "operator": "Add", "value": { "elementReference": "CurrentTask" } }
+      ],
+      "connector": { "targetReference": "Loop_Opps" }
+    },
+    {
+      "name": "Set_Fault_Recipients",
+      "label": "Set Fault Recipients",
+      "locationX": 594,
+      "locationY": 494,
+      "assignmentItems": [
+        { "assignToReference": "FaultEmailRecipients", "operator": "Add", "value": { "stringValue": "admin@example.com" } }
+      ],
+      "connector": { "targetReference": "Send_Fault_Email" }
+    }
+  ],
+  "recordCreates": [
+    {
+      "name": "Create_All_Tasks",
+      "label": "Create All Tasks",
+      "locationX": 264,
+      "locationY": 814,
+      "inputReference": "TasksToCreate",
+      "faultConnector": { "targetReference": "Set_Fault_Recipients" }
+    }
+  ],
+  "actionCalls": [
+    {
+      "name": "Send_Fault_Email",
+      "label": "Send Fault Email",
+      "locationX": 594,
+      "locationY": 614,
+      "actionType": "emailSimple",
+      "actionName": "emailSimple",
+      "nameSegment": "emailSimple",
+      "versionString": "1.0.1",
+      "flowTransactionModel": "CurrentTransaction",
+      "inputParameters": [
+        { "name": "emailAddressesArray", "value": { "elementReference": "FaultEmailRecipients" } },
+        { "name": "emailSubject", "value": { "stringValue": "Flow Error: Opp Follow Up Tasks" } },
+        { "name": "emailBody", "value": { "elementReference": "FaultEmailBody" } },
+        { "name": "sendRichBody", "value": { "booleanValue": true } }
+      ]
+    }
+  ]
+}
+```
+
+### Key patterns in the example above
+
+1. **Pattern 1 (no object on `start`)** — the `recordLookups` element queries Opportunity, not the start trigger. Use this when you need complex filter logic or multiple objects.
+2. **Collection pattern** — uses a loop + assignment + `Add` operator to build a Task collection, then a single `recordCreates` to bulk-insert all tasks
+3. **Fault handling** — `faultConnector` on the DML element routes to an email notification via `emailSimple`
+4. **Formula fields for date math** — `SevenDaysFromNow` and `FourteenDaysAgo` computed with `$Flow.CurrentDate`
+5. **`iterationOrder: "Asc"`** — the only valid values are `Asc` and `Desc` (NOT `Ascending`, `Descending`, `FirstItemIn`, or `LastItemIn`)
+6. **When to use Pattern 2 instead** — if the requirement is simply "find all records matching X and do Y to each", use `object` + `filters` on start. The flow runs per-record with `$Record` available, and you don't need a `recordLookups` or loop.
+
 ## Flow type selection guide
 
 | Need | Flow Type | triggerType | processType |
