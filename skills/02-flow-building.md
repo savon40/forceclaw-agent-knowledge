@@ -46,6 +46,19 @@ In the Flow metadata JSON, add a `customErrors` element. This is the Flow equiva
 
 ---
 
+## CRITICAL: Flow Variable and Element Naming Rules
+
+All element names, variable names, formula names, and decision names in Flow metadata MUST follow these rules:
+- Only alphanumeric characters and underscores
+- Must start with a letter
+- No spaces, no special characters (no `$`, no `-`, no `.`)
+- No double underscores (`__`)
+- Cannot end with an underscore
+
+**NEVER declare system variables as flow variables.** `$Record`, `$Record__Prior`, `$Flow.CurrentDate`, `$Flow.CurrentDateTime`, etc. are automatically available — do NOT add them to the `variables` array. Adding `$Record__Prior` as a variable will fail deployment.
+
+---
+
 ## CRITICAL: Flow Formula Functions — What EXISTS and What DOESN'T
 
 **SIZE() does NOT exist in Flow formulas.** Do NOT use SIZE() to count a collection. It will cause a syntax error.
@@ -682,7 +695,7 @@ Flow variables, formulas, and constants use the Metadata API's `FlowDataType` en
 ### Value references
 
 - `$Record` — the triggering record (record-triggered flows only)
-- `$Record__Prior` — the record's values BEFORE the update (only in update-triggered flows)
+- `$Record__Prior` — the record's values BEFORE the update (only in update-triggered flows). **NEVER declare `$Record` or `$Record__Prior` as variables in the flow metadata** — they are system-provided automatically. If you add them to the `variables` array, the deploy will fail with "Variable Name: The Flow Variable API Name can only contain underscores and alphanumeric characters." Variables starting with `$` are reserved system variables.
 - `$Flow.CurrentDate` — today's date
 - `$Flow.CurrentDateTime` — current date/time
 - `$Api.Partner_Server_URL_290` — org instance URL (useful for building links)
