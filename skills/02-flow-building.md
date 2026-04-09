@@ -875,15 +875,69 @@ The `chatterPost` core action posts a Chatter feed item to a record. **It only w
 
 To @mention users in a Chatter post, include the mention syntax in the `text` body: `@[005XXXXXXXXXXXX]` (user Id). But note this requires hardcoding the user Id, which violates the "never hardcode IDs" rule — consider looking up the user and building the mention string dynamically.
 
+### CRITICAL: Correct `chatterPost` action structure
+
+The `chatterPost` action has a very specific structure that differs from `emailSimple`. Getting any field wrong causes "can't find an action with the name and action type" errors. Use this EXACT pattern:
+
+**Post to a record's Chatter feed:**
+
+```json
+{
+  "name": "Post_Chatter_Record",
+  "label": "Post to Chatter Record",
+  "locationX": 176,
+  "locationY": 539,
+  "actionName": "chatterPost",
+  "actionType": "chatterPost",
+  "connector": { "targetReference": "Next_Element" },
+  "flowTransactionModel": "CurrentTransaction",
+  "inputParameters": [
+    { "name": "text", "value": { "elementReference": "MyTextTemplate" } },
+    { "name": "subjectNameOrId", "value": { "elementReference": "$Record.Id" } }
+  ],
+  "nameSegment": "chatterPost",
+  "offset": 0,
+  "storeOutputAutomatically": true
+}
+```
+
+**Post to a user's Chatter feed (add `type: "user"` input parameter):**
+
+```json
+{
+  "name": "Post_Chatter_User",
+  "label": "Post to Chatter User",
+  "locationX": 176,
+  "locationY": 647,
+  "actionName": "chatterPost",
+  "actionType": "chatterPost",
+  "connector": { "targetReference": "Next_Element" },
+  "flowTransactionModel": "CurrentTransaction",
+  "inputParameters": [
+    { "name": "text", "value": { "elementReference": "MyTextTemplate" } },
+    { "name": "subjectNameOrId", "value": { "elementReference": "$Record.OwnerId" } },
+    { "name": "type", "value": { "stringValue": "user" } }
+  ],
+  "nameSegment": "chatterPost",
+  "offset": 0,
+  "storeOutputAutomatically": true
+}
+```
+
+**CRITICAL rules for `chatterPost`:**
+- MUST include `"offset": 0` and `"storeOutputAutomatically": true` — omitting these causes deploy failures
+- Do NOT include `"versionString"` on chatterPost actions — unlike `emailSimple` which uses `"versionString": "1.0.1"`, chatterPost does NOT have a versionString. Including one causes "can't find action" errors
+- `subjectNameOrId` is the record ID or user ID to post on
+- To post on a user's feed instead of a record, add the `type` input parameter with `"stringValue": "user"`
+
 ### When `chatterPost` fails
 
-If the deploy fails with "can't find an action with the name and action type", Chatter is likely disabled in this org. Do NOT retry — instead:
+If the deploy fails with "can't find an action with the name and action type" after using the exact pattern above, Chatter is likely disabled in this org. Do NOT retry — instead:
 
-1. Tell the user: *"The Chatter post action isn't available in this org — Chatter may not be enabled. I can use an alternative: [options below]"*
+1. Tell the user: *"The Chatter post action isn't available in this org — Chatter may not be enabled."*
 2. Offer alternatives:
-   - **Create a Task** instead (`recordCreates` element) — visible in the record's activity timeline
+   - **Create a Task** instead (`recordCreates` with object `Task`) — visible in the record's activity timeline
    - **Send an email notification** — use `emailSimple` (already documented above)
-   - **Create a FeedItem via Apex** — use `execute_anonymous_apex` if the user specifically wants a feed post and Chatter is just misconfigured
 
 ---
 
