@@ -59,6 +59,27 @@ All element names, variable names, formula names, and decision names in Flow met
 
 ---
 
+## CRITICAL: locationX and locationY are REQUIRED on every element
+
+Every flow element — `decisions`, `recordLookups`, `recordCreates`, `recordUpdates`, `assignments`, `actionCalls`, `loops`, `screens`, `customErrors`, `subflows` — **MUST** include `locationX` and `locationY` as integer fields. Omitting them causes: `Required field is missing: locationX`.
+
+The only elements that do NOT take locationX/locationY are: `formulas`, `variables`, `textTemplates`, `choices`, `constants`, and `stages`.
+
+Use these values for Auto-Layout flows (the exact numbers don't matter for Auto-Layout, but they must be present):
+- First element after start: `"locationX": 176, "locationY": 134`
+- Increment `locationY` by ~108 for each subsequent element on the main path
+- Branching elements (fault paths, decision outcomes): offset `locationX` by ~264
+
+Example:
+```json
+{ "name": "Get_Account", "locationX": 176, "locationY": 134, ... },
+{ "name": "Check_Domain",  "locationX": 176, "locationY": 242, ... },
+{ "name": "Send_Email",    "locationX": 176, "locationY": 350, ... },
+{ "name": "Error_Handler", "locationX": 440, "locationY": 242, ... }
+```
+
+---
+
 ## CRITICAL: Flow Formula Functions — What EXISTS and What DOESN'T
 
 **SIZE() does NOT exist in Flow formulas.** Do NOT use SIZE() to count a collection. It will cause a syntax error.
@@ -823,6 +844,7 @@ Sending an email via the `emailSimple` core action has strict requirements. Get 
 
 | Wrong | Why it fails | Right |
 |---|---|---|
+| Omitting `locationX`/`locationY` on an element | `Required field is missing: locationX` | Add `"locationX": 176, "locationY": <value>` to every element (decisions, recordLookups, assignments, actionCalls, etc.) |
 | `"name": "emailAddresses"` | Not a valid param name | `"name": "emailAddressesArray"` |
 | `"name": "recipientAddresses"` | Not a valid param name | `"name": "emailAddressesArray"` |
 | `{ "stringValue": "a@b.com" }` for recipients | Must be a collection | `{ "elementReference": "EmailRecipients" }` pointing to a `isCollection: true` String var |
