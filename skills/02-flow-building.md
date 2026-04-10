@@ -46,6 +46,32 @@ In the Flow metadata JSON, add a `customErrors` element. This is the Flow equiva
 
 ---
 
+## CRITICAL: Common Flow Creation Failures — Read This FIRST
+
+These are the errors that cause the most failed attempts and wasted tokens. Check every flow you build against this list BEFORE submitting.
+
+### 1. NO Screen elements in Autolaunched/Record-Triggered Flows
+Autolaunched Flows (`processType: "AutoLaunchedFlow"`) and Record-Triggered Flows CANNOT contain:
+- `screens` elements
+- `DisplayText` components
+- Any interactive UI elements
+
+**Wrong:** Adding a Screen element as a fault path for error handling.
+**Right:** For error handling in autolaunched flows, simply let the fault connector end the flow (no target), or connect to an Assignment element that logs the error. Do NOT create Screen elements for error display.
+
+### 2. NO isCollection variables for single-value email parameters
+When sending emails in a flow using the `Send Email` action, the `Recipient Address List` parameter expects a **single text variable**, NOT a collection. Do NOT set `isCollection: true` on the variable holding the email address.
+
+### 3. recordUpdates — use EITHER `object` OR `inputReference`, never both
+- To update a **specific record by filter**: use `object` + `filters` + `inputAssignments` (no `inputReference`, no `sObjectInputReference`)
+- To update a **record variable**: use `inputReference` pointing to the variable (no `object` field)
+- Including both `object` and `inputReference`/`sObjectInputReference` causes: "You can't use the object field with the sObjectInputReference field"
+
+### 4. Formula field references in flow conditions
+When checking a related record's field in entry conditions (e.g., Candidate status), you can use `$Record.Candidate__r.Status__c` in entry filters. But in Get Records filters, use the field directly on the queried object (e.g., `Status__c` on Candidate__c, NOT `$Record.Candidate__r.Status__c`).
+
+---
+
 ## CRITICAL: Flow Formula Functions — What EXISTS and What DOESN'T
 
 **SIZE() does NOT exist in Flow formulas.** Do NOT use SIZE() to count a collection. It will cause a syntax error.

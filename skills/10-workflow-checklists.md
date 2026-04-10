@@ -58,8 +58,10 @@ create_custom_field(
 
 When you're about to create a Lookup field, decide the delete behavior during planning and mention it in your plan ("I'll create Account as a required Lookup to Account with Restrict delete behavior"). Don't leave it implicit.
 
-### 3. Field-Level Security (ALWAYS ask)
-After creating the field, ask:
+### 3. Field-Level Security (ALWAYS ask — NEVER skip or assume)
+After creating the field, you MUST stop and ask the user before setting any FLS. Do NOT call `set_field_level_security` until the user has explicitly told you which profiles need access. Do NOT default to "All Profiles" on your own.
+
+Ask:
 > "Which profiles should have access to this field? I can grant it to **All Profiles** or specific ones. Note: new fields are only visible to System Administrator by default."
 
 Options to offer:
@@ -67,7 +69,7 @@ Options to offer:
 - **Specific profiles** — ask which ones
 - **Read-only for some** — visible but not editable
 
-Use `set_field_level_security` to apply.
+Only call `set_field_level_security` AFTER the user responds with their choice.
 
 ### 4. Page Layout placement (ALWAYS ask)
 > "Should I add this field to a page layout? If so, which layout and which section?"
@@ -92,6 +94,39 @@ Here's what I'll create:
 • FLS: [All Profiles / Specific / etc.]
 • Layout: [Layout name, section] or "not adding to layout"
 • Description: [if provided]
+
+Should I go ahead?
+```
+
+---
+
+## Creating a Custom Tab
+
+### 1. Check if a tab already exists
+Query existing tabs: `SELECT Id, Name, SobjectName FROM CustomTab WHERE SobjectName = '{ObjectApiName}'` via Tooling API. If a tab already exists, tell the user.
+
+### 2. Tab visibility (ALWAYS ask)
+After creating the tab, ask:
+> "Which profiles should have access to this tab? I can set it to **Default On** (visible), **Default Off** (available but hidden), or **Tab Hidden** for specific profiles."
+
+Options to offer:
+- **Default On for All Profiles** — everyone sees it in the navigation
+- **Default On for specific profiles** — ask which ones
+- **Default Off** — available but users need to add it themselves
+
+Use profile tab visibility settings to apply. Note: System Administrator profile always gets Default On automatically.
+
+### 3. App assignment (ask when relevant)
+> "Should I add this tab to any Lightning apps? If so, which app?"
+
+### 4. Summary
+Before creating, confirm:
+```
+Here's what I'll create:
+• Tab for: [Object]
+• Icon: [Icon description]
+• Tab visibility: [All Profiles / Specific / etc.]
+• App: [App name] or "not adding to an app"
 
 Should I go ahead?
 ```
@@ -173,7 +208,9 @@ If NO trigger exists and the user wants trigger-based logic:
 ### When asked to write or modify Apex:
 1. **Check existing code first** — always read the current class/trigger before modifying
 2. **Show the plan** — describe what you'll add/change before doing it
-3. **Create test classes** — every new Apex class should have a corresponding test class
+3. **Ask about test coverage** — before writing tests, ask the user:
+   > "Would you like me to create a test class for this? If so, what scenarios should I cover? (e.g., positive cases, negative cases, bulk data, edge cases)"
+   Do NOT automatically create test classes without asking. The user may have their own testing strategy, existing test classes to update, or specific scenarios they want covered.
 4. **Run tests after changes** — use `run_apex_tests` to verify
 
 ---
@@ -213,6 +250,88 @@ If NO trigger exists and the user wants trigger-based logic:
 5. **License type** — Salesforce, Platform, etc.
 6. **Permission sets** — any to assign immediately?
 7. **Active?** — should the user be active immediately?
+
+---
+
+## Creating an Approval Process
+
+### FIRST: Ask which approach — Classic or Flow-Based
+
+Salesforce supports two approval approaches. Ask the user which they prefer:
+
+> "Would you like a **classic Approval Process** (Setup-based, managed in Approval Processes) or a **Flow-based approval** (using a Flow with an Action element to submit/approve)? Flow-based approvals are more flexible and the modern Salesforce recommendation."
+
+**When to recommend Classic Approval Process:**
+- Simple single/multi-step approvals with standard routing (manager hierarchy, specific user, queue)
+- User is familiar with classic approvals and wants to manage them in Setup
+- Entry criteria + approve/reject actions are straightforward
+
+**When to recommend Flow-Based Approval:**
+- Complex conditional routing (different approvers based on record data)
+- Need to combine approval with other automation (field updates, emails, record creation) in one flow
+- Want more control over the approval UX (custom screens, guided steps)
+- Modern orgs adopting Salesforce's recommended approach
+
+---
+
+### Option A: Classic Approval Process
+
+#### CRITICAL: Actions must exist BEFORE the approval process
+
+Approval processes use `finalApprovalActions`, `finalRejectionActions`, and `recallActions` that reference **pre-existing** components by name and type. If you reference a FieldUpdate, Alert, or Task that doesn't exist yet, the API will fail with: "The approval process contains an undefined action."
+
+**You MUST create the referenced actions BEFORE creating the approval process.**
+
+#### Deployment order for a classic approval with field update:
+
+1. **Create the WorkflowFieldUpdate first** via Metadata API. **Do NOT try `Metadata.WorkflowFieldUpdate` in Anonymous Apex — that class doesn't exist.** Since there is no dedicated tool for this, tell the user you'll create the approval process and they need to add the field update action manually:
+
+   > "I've created the approval process. To complete the setup, go to Setup → Approval Processes → [process name] → Final Approval Actions → Add New → Field Update, and configure it to set [field] to [value]."
+
+2. **Then create the approval process** using `create_approval_process` referencing the field update by name:
+   ```json
+   "finalApprovalActions": {
+     "action": [{ "name": "FieldUpdateName", "type": "FieldUpdate" }]
+   }
+   ```
+
+   If the field update doesn't exist yet, create the approval process **without** `finalApprovalActions` and instruct the user to add it manually.
+
+#### Ask about:
+1. **Object** — which object needs approval?
+2. **Entry criteria** — when should the approval process trigger?
+3. **Approver** — who approves? (manager, specific user, queue, role?)
+4. **Multi-step?** — single or multiple approval steps?
+5. **Actions on approval** — what happens when approved? (field updates, email alerts, tasks)
+6. **Actions on rejection** — what happens when rejected?
+7. **Record lock** — lock during/after approval?
+
+---
+
+### Option B: Flow-Based Approval
+
+Build approvals entirely in Flow using a combination of:
+- **Screen Flow** for the submission form (optional — user clicks a button to submit)
+- **Record-Triggered Flow** that checks criteria and submits for approval
+- **Approval action** element in the flow to submit the record
+- **After-save Flow** to handle post-approval/rejection field updates
+
+Example: "Require approval before Position moves from Draft to Open"
+
+**Flow-based approach:**
+1. Create a **validation rule** on Position__c: block direct Status change from Draft to Open (force it through the approval)
+   - Formula: `AND(ISCHANGED(Status__c), ISPICKVAL(PRIORVALUE(Status__c), "Draft"), ISPICKVAL(Status__c, "Open"))`
+   - Error: "Position must be approved before it can be opened. Please submit for approval."
+2. Add a **picklist value** like "Pending Approval" to Status__c
+3. Create an **after-save flow** on Position__c:
+   - Entry: Status changes to "Pending Approval"
+   - Action: Submit the record for approval using the Approval action element
+4. Create a **classic approval process** (simpler, just the routing):
+   - Entry criteria: Status = "Pending Approval"
+   - On approval: field update Status → "Open"
+   - On rejection: field update Status → "Draft"
+
+This hybrid approach gives you the best of both worlds — Flow handles the automation logic, and the classic approval process handles the routing and approval UI.
 
 ---
 
