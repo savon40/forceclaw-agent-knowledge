@@ -4,11 +4,240 @@
 
 - List all active Flows in the org
 - Read full Flow definitions and metadata structure
-- Create new Flows via the Metadata API (record-triggered, autolaunched, scheduled, screen)
+- **Create new Flows** using the **simplified flow_definition format** (preferred) — describe the trigger, steps, and resources. The tool builds valid Salesforce metadata automatically. No need to provide locationX/Y, connectors, processMetadataValues, or any boilerplate.
 - **Update existing Flows** — modify elements, add new logic, change conditions, add branches. Use `get_flow_definition` to read the current flow, modify the metadata, then save with `update_flow`. This works on active flows — the Metadata API creates a new version automatically. You do NOT need to deactivate a flow before updating it.
 - Activate and deactivate existing Flows
 - Delete Flows (must be deactivated first)
 - Answer questions about what a Flow does based on its metadata
+
+---
+
+## CRITICAL: Creating Flows — Use the Simplified flow_definition Format
+
+When calling `create_flow`, use the `flow_definition` parameter (NOT `metadata`). The tool builds all Salesforce metadata automatically. You only describe the intent.
+
+### flow_definition structure
+
+```json
+{
+  "type": "record_triggered",
+  "trigger": {
+    "object": "Contact",
+    "when": "after_save",
+    "record_events": "update",
+    "entry_conditions": [
+      { "field": "Email", "operator": "is_changed", "value": true }
+    ]
+  },
+  "steps": [ ... ],
+  "resources": [ ... ]
+}
+```
+
+**type** — `"record_triggered"`, `"screen"`, `"autolaunched"`, or `"scheduled"`
+
+**trigger** — required for record_triggered and scheduled:
+- Record triggered: `{ object, when: "before_save"|"after_save", record_events: "create"|"update"|"create_and_update"|"delete", entry_conditions?, entry_condition_logic? }`
+- Scheduled: `{ frequency: "once"|"daily"|"weekly", start_date, start_time, object?, filters?, filter_logic? }`
+
+### Step types
+
+Steps are an ordered array. **Connectors are auto-generated from the array order** — you never specify targetReference.
+
+| Step type | Description |
+|-----------|-------------|
+| `get_records` | Query records. Fields: `object`, `filters`, `filter_logic?`, `first_record_only?`, `fields?` |
+| `create_records` | Insert records. Fields: `object`, `field_values` |
+| `update_records` | Update records. Fields: `target` (`"$Record"` or `{ object, filters }`), `field_values` |
+| `delete_records` | Delete records. Fields: `object`, `filters` |
+| `decision` | Branch logic. Fields: `rules` (array of `{ name, conditions, steps }`) + `default_steps?`, `default_label?` |
+| `assignment` | Set variables. Fields: `assignments` (array of `{ target, operator, value/reference }`) |
+| `loop` | Iterate collection. Fields: `collection`, `order?`, `loop_steps` |
+| `send_email` | Send email (handles all emailSimple ceremony automatically). Fields: `to`, `subject`, `body` |
+| `subflow` | Call another flow. Fields: `flow_name`, `inputs?`, `outputs?` |
+| `custom_error` | Block save with error (before-save only). Fields: `message`, `field?` |
+| `action_call` | Generic action. Fields: `action_name`, `action_type`, `input_parameters` |
+
+### Fault handling
+
+Add `handle_faults: true` to any step to auto-generate a fault handler that sends an error email. Or use `fault_target: "StepName"` to route to a specific step.
+
+### Values and references
+
+In filters, conditions, and field_values:
+- Literal: `"value": "Closed Won"` or `"value": true` or `"value": 42`
+- Reference: `"reference": "$Record.AccountId"` or `"reference": "Get_Account.Website"`
+- In field_values: `{ "StageName": "Closed Won" }` for literal, `{ "OwnerId": { "ref": "Get_Queue.Id" } }` for reference
+
+### Operators
+
+Use simplified names — the tool maps them automatically:
+`equals`, `not_equals`, `greater_than`, `less_than`, `greater_or_equal`, `less_or_equal`, `contains`, `starts_with`, `ends_with`, `is_null`, `is_changed`, `was_set`
+
+### Resources
+
+```json
+"resources": [
+  { "type": "formula", "name": "emailDomain", "data_type": "string", "expression": "..." },
+  { "type": "variable", "name": "myVar", "data_type": "string", "is_collection": false },
+  { "type": "text_template", "name": "emailBody", "text": "Hello {!$Record.Name}..." }
+]
+```
+
+### Example: After-Save flow with email notification (DEV-10 pattern)
+
+```json
+{
+  "type": "record_triggered",
+  "trigger": {
+    "object": "Contact",
+    "when": "after_save",
+    "record_events": "update",
+    "entry_conditions": [
+      { "field": "Email", "operator": "is_changed", "value": true }
+    ]
+  },
+  "steps": [
+    {
+      "type": "get_records",
+      "name": "Get_Account",
+      "object": "Account",
+      "filters": [{ "field": "Id", "operator": "equals", "reference": "$Record.AccountId" }],
+      "handle_faults": true
+    },
+    {
+      "type": "decision",
+      "name": "Check_Domains",
+      "rules": [
+        {
+          "name": "Domains_Match",
+          "conditions": [
+            { "left": "emailDomain", "operator": "equals", "reference": "websiteDomain" }
+          ],
+          "steps": []
+        }
+      ],
+      "default_steps": [
+        {
+          "type": "send_email",
+          "name": "Alert_Owner",
+          "to": [{ "ref": "Get_Owner.Email" }],
+          "subject": "Contact Email Domain Mismatch",
+          "body": "Contact {!$Record.FirstName} {!$Record.LastName} email changed to {!$Record.Email}.\nEmail domain: {!emailDomain}\nAccount: {!Get_Account.Name}\nWebsite domain: {!websiteDomain}",
+          "handle_faults": true
+        }
+      ],
+      "default_label": "Domains Don't Match"
+    }
+  ],
+  "resources": [
+    {
+      "type": "formula",
+      "name": "emailDomain",
+      "data_type": "string",
+      "expression": "LOWER(RIGHT({!$Record.Email}, LEN({!$Record.Email}) - FIND('@', {!$Record.Email})))"
+    },
+    {
+      "type": "formula",
+      "name": "websiteDomain",
+      "data_type": "string",
+      "expression": "IF(NOT(ISBLANK({!Get_Account.Website})), LOWER(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE({!Get_Account.Website}, 'https://', ''), 'http://', ''), 'www.', '')), '')"
+    }
+  ]
+}
+```
+
+### Example: Before-Save field update
+
+```json
+{
+  "type": "record_triggered",
+  "trigger": {
+    "object": "Opportunity",
+    "when": "before_save",
+    "record_events": "update",
+    "entry_conditions": [
+      { "field": "StageName", "operator": "equals", "value": "Closed Won" },
+      { "field": "StageName", "operator": "is_changed", "value": true }
+    ]
+  },
+  "steps": [
+    {
+      "type": "update_records",
+      "name": "Set_Close_Date",
+      "target": "$Record",
+      "field_values": { "CloseDate": { "ref": "$Flow.CurrentDate" } }
+    }
+  ]
+}
+```
+
+### Example: Before-Save validation with custom error
+
+```json
+{
+  "type": "record_triggered",
+  "trigger": {
+    "object": "Account",
+    "when": "before_save",
+    "record_events": "update",
+    "entry_conditions": [
+      { "field": "Status__c", "operator": "is_changed", "value": true },
+      { "field": "Status__c", "operator": "equals", "value": "Churned" }
+    ]
+  },
+  "steps": [
+    {
+      "type": "get_records",
+      "name": "Get_Open_Opps",
+      "object": "Opportunity",
+      "filters": [
+        { "field": "AccountId", "operator": "equals", "reference": "$Record.Id" },
+        { "field": "IsClosed", "operator": "equals", "value": false }
+      ]
+    },
+    {
+      "type": "decision",
+      "name": "Has_Open_Opps",
+      "rules": [
+        {
+          "name": "Open_Opps_Found",
+          "conditions": [
+            { "left": "Get_Open_Opps", "operator": "is_null", "value": false }
+          ],
+          "steps": [
+            {
+              "type": "custom_error",
+              "name": "Block_Churn",
+              "message": "Cannot change Status to Churned — there are open Opportunities on this Account.",
+              "field": "Status__c"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+### What you DON'T need to provide
+
+The tool handles ALL of the following automatically:
+- `locationX` / `locationY` coordinates
+- `connector` / `defaultConnector` / `faultConnector` wiring
+- `processMetadataValues` (BuilderType, CanvasMode, OriginBuilderType)
+- `apiVersion`, `environments`, `interviewLabel`, `status`, `fullName`
+- emailSimple ceremony (collection variable, assignment, text template, correct parameter names)
+- Fault handler email actions (just set `handle_faults: true`)
+
+### Before Save vs After Save
+
+This is a Salesforce constraint — pick the right one:
+
+- **Before Save**: Can update `$Record` fields directly. CANNOT send emails, post to Chatter, make callouts, create/update/delete other records via DML. Use for field defaults, validations, and same-record updates.
+- **After Save**: Can do everything — email, Chatter, DML on other records, callouts. CANNOT use `$Record` directly for updates (must use filter-based update). Use for notifications, cross-object operations, and anything that needs external calls.
+
+---
 
 ## CRITICAL: How to Block a Save / Show an Error in a Before Save Flow
 
