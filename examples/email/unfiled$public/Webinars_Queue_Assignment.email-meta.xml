@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<EmailTemplate xmlns="http://soap.sforce.com/2006/04/metadata">
+    <available>true</available>
+    <description>This email template is sent to lead owners in the Webinars Queue.</description>
+    <encodingKey>ISO-8859-1</encodingKey>
+    <name>Webinars Queue Assignment</name>
+    <style>none</style>
+    <subject>MQL Notification | Webinar</subject>
+    <type>text</type>
+    <uiType>Aloha</uiType>
+</EmailTemplate>

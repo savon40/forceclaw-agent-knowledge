@@ -4,11 +4,240 @@
 
 - List all active Flows in the org
 - Read full Flow definitions and metadata structure
-- Create new Flows via the Metadata API (record-triggered, autolaunched, scheduled, screen)
+- **Create new Flows** using the **simplified flow_definition format** (preferred) — describe the trigger, steps, and resources. The tool builds valid Salesforce metadata automatically. No need to provide locationX/Y, connectors, processMetadataValues, or any boilerplate.
 - **Update existing Flows** — modify elements, add new logic, change conditions, add branches. Use `get_flow_definition` to read the current flow, modify the metadata, then save with `update_flow`. This works on active flows — the Metadata API creates a new version automatically. You do NOT need to deactivate a flow before updating it.
 - Activate and deactivate existing Flows
 - Delete Flows (must be deactivated first)
 - Answer questions about what a Flow does based on its metadata
+
+---
+
+## CRITICAL: Creating Flows — Use the Simplified flow_definition Format
+
+When calling `create_flow`, use the `flow_definition` parameter (NOT `metadata`). The tool builds all Salesforce metadata automatically. You only describe the intent.
+
+### flow_definition structure
+
+```json
+{
+  "type": "record_triggered",
+  "trigger": {
+    "object": "Contact",
+    "when": "after_save",
+    "record_events": "update",
+    "entry_conditions": [
+      { "field": "Email", "operator": "is_changed", "value": true }
+    ]
+  },
+  "steps": [ ... ],
+  "resources": [ ... ]
+}
+```
+
+**type** — `"record_triggered"`, `"screen"`, `"autolaunched"`, or `"scheduled"`
+
+**trigger** — required for record_triggered and scheduled:
+- Record triggered: `{ object, when: "before_save"|"after_save", record_events: "create"|"update"|"create_and_update"|"delete", entry_conditions?, entry_condition_logic? }`
+- Scheduled: `{ frequency: "once"|"daily"|"weekly", start_date, start_time, object?, filters?, filter_logic? }`
+
+### Step types
+
+Steps are an ordered array. **Connectors are auto-generated from the array order** — you never specify targetReference.
+
+| Step type | Description |
+|-----------|-------------|
+| `get_records` | Query records. Fields: `object`, `filters`, `filter_logic?`, `first_record_only?`, `fields?` |
+| `create_records` | Insert records. Fields: `object`, `field_values` |
+| `update_records` | Update records. Fields: `target` (`"$Record"` or `{ object, filters }`), `field_values` |
+| `delete_records` | Delete records. Fields: `object`, `filters` |
+| `decision` | Branch logic. Fields: `rules` (array of `{ name, conditions, steps }`) + `default_steps?`, `default_label?` |
+| `assignment` | Set variables. Fields: `assignments` (array of `{ target, operator, value/reference }`) |
+| `loop` | Iterate collection. Fields: `collection`, `order?`, `loop_steps` |
+| `send_email` | Send email (handles all emailSimple ceremony automatically). Fields: `to`, `subject`, `body` |
+| `subflow` | Call another flow. Fields: `flow_name`, `inputs?`, `outputs?` |
+| `custom_error` | Block save with error (before-save only). Fields: `message`, `field?` |
+| `action_call` | Generic action. Fields: `action_name`, `action_type`, `input_parameters` |
+
+### Fault handling
+
+Add `handle_faults: true` to any step to auto-generate a fault handler that sends an error email. Or use `fault_target: "StepName"` to route to a specific step.
+
+### Values and references
+
+In filters, conditions, and field_values:
+- Literal: `"value": "Closed Won"` or `"value": true` or `"value": 42`
+- Reference: `"reference": "$Record.AccountId"` or `"reference": "Get_Account.Website"`
+- In field_values: `{ "StageName": "Closed Won" }` for literal, `{ "OwnerId": { "ref": "Get_Queue.Id" } }` for reference
+
+### Operators
+
+Use simplified names — the tool maps them automatically:
+`equals`, `not_equals`, `greater_than`, `less_than`, `greater_or_equal`, `less_or_equal`, `contains`, `starts_with`, `ends_with`, `is_null`, `is_changed`, `was_set`
+
+### Resources
+
+```json
+"resources": [
+  { "type": "formula", "name": "emailDomain", "data_type": "string", "expression": "..." },
+  { "type": "variable", "name": "myVar", "data_type": "string", "is_collection": false },
+  { "type": "text_template", "name": "emailBody", "text": "Hello {!$Record.Name}..." }
+]
+```
+
+### Example: After-Save flow with email notification (DEV-10 pattern)
+
+```json
+{
+  "type": "record_triggered",
+  "trigger": {
+    "object": "Contact",
+    "when": "after_save",
+    "record_events": "update",
+    "entry_conditions": [
+      { "field": "Email", "operator": "is_changed", "value": true }
+    ]
+  },
+  "steps": [
+    {
+      "type": "get_records",
+      "name": "Get_Account",
+      "object": "Account",
+      "filters": [{ "field": "Id", "operator": "equals", "reference": "$Record.AccountId" }],
+      "handle_faults": true
+    },
+    {
+      "type": "decision",
+      "name": "Check_Domains",
+      "rules": [
+        {
+          "name": "Domains_Match",
+          "conditions": [
+            { "left": "emailDomain", "operator": "equals", "reference": "websiteDomain" }
+          ],
+          "steps": []
+        }
+      ],
+      "default_steps": [
+        {
+          "type": "send_email",
+          "name": "Alert_Owner",
+          "to": [{ "ref": "Get_Owner.Email" }],
+          "subject": "Contact Email Domain Mismatch",
+          "body": "Contact {!$Record.FirstName} {!$Record.LastName} email changed to {!$Record.Email}.\nEmail domain: {!emailDomain}\nAccount: {!Get_Account.Name}\nWebsite domain: {!websiteDomain}",
+          "handle_faults": true
+        }
+      ],
+      "default_label": "Domains Don't Match"
+    }
+  ],
+  "resources": [
+    {
+      "type": "formula",
+      "name": "emailDomain",
+      "data_type": "string",
+      "expression": "LOWER(RIGHT({!$Record.Email}, LEN({!$Record.Email}) - FIND('@', {!$Record.Email})))"
+    },
+    {
+      "type": "formula",
+      "name": "websiteDomain",
+      "data_type": "string",
+      "expression": "IF(NOT(ISBLANK({!Get_Account.Website})), LOWER(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE({!Get_Account.Website}, 'https://', ''), 'http://', ''), 'www.', '')), '')"
+    }
+  ]
+}
+```
+
+### Example: Before-Save field update
+
+```json
+{
+  "type": "record_triggered",
+  "trigger": {
+    "object": "Opportunity",
+    "when": "before_save",
+    "record_events": "update",
+    "entry_conditions": [
+      { "field": "StageName", "operator": "equals", "value": "Closed Won" },
+      { "field": "StageName", "operator": "is_changed", "value": true }
+    ]
+  },
+  "steps": [
+    {
+      "type": "update_records",
+      "name": "Set_Close_Date",
+      "target": "$Record",
+      "field_values": { "CloseDate": { "ref": "$Flow.CurrentDate" } }
+    }
+  ]
+}
+```
+
+### Example: Before-Save validation with custom error
+
+```json
+{
+  "type": "record_triggered",
+  "trigger": {
+    "object": "Account",
+    "when": "before_save",
+    "record_events": "update",
+    "entry_conditions": [
+      { "field": "Status__c", "operator": "is_changed", "value": true },
+      { "field": "Status__c", "operator": "equals", "value": "Churned" }
+    ]
+  },
+  "steps": [
+    {
+      "type": "get_records",
+      "name": "Get_Open_Opps",
+      "object": "Opportunity",
+      "filters": [
+        { "field": "AccountId", "operator": "equals", "reference": "$Record.Id" },
+        { "field": "IsClosed", "operator": "equals", "value": false }
+      ]
+    },
+    {
+      "type": "decision",
+      "name": "Has_Open_Opps",
+      "rules": [
+        {
+          "name": "Open_Opps_Found",
+          "conditions": [
+            { "left": "Get_Open_Opps", "operator": "is_null", "value": false }
+          ],
+          "steps": [
+            {
+              "type": "custom_error",
+              "name": "Block_Churn",
+              "message": "Cannot change Status to Churned — there are open Opportunities on this Account.",
+              "field": "Status__c"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+### What you DON'T need to provide
+
+The tool handles ALL of the following automatically:
+- `locationX` / `locationY` coordinates
+- `connector` / `defaultConnector` / `faultConnector` wiring
+- `processMetadataValues` (BuilderType, CanvasMode, OriginBuilderType)
+- `apiVersion`, `environments`, `interviewLabel`, `status`, `fullName`
+- emailSimple ceremony (collection variable, assignment, text template, correct parameter names)
+- Fault handler email actions (just set `handle_faults: true`)
+
+### Before Save vs After Save
+
+This is a Salesforce constraint — pick the right one:
+
+- **Before Save**: Can update `$Record` fields directly. CANNOT send emails, post to Chatter, make callouts, create/update/delete other records via DML. Use for field defaults, validations, and same-record updates.
+- **After Save**: Can do everything — email, Chatter, DML on other records, callouts. CANNOT use `$Record` directly for updates (must use filter-based update). Use for notifications, cross-object operations, and anything that needs external calls.
+
+---
 
 ## CRITICAL: How to Block a Save / Show an Error in a Before Save Flow
 
@@ -69,6 +298,40 @@ When sending emails in a flow using the `Send Email` action, the `Recipient Addr
 
 ### 4. Formula field references in flow conditions
 When checking a related record's field in entry conditions (e.g., Candidate status), you can use `$Record.Candidate__r.Status__c` in entry filters. But in Get Records filters, use the field directly on the queried object (e.g., `Status__c` on Candidate__c, NOT `$Record.Candidate__r.Status__c`).
+
+---
+
+## CRITICAL: Flow Variable and Element Naming Rules
+
+All element names, variable names, formula names, and decision names in Flow metadata MUST follow these rules:
+- Only alphanumeric characters and underscores
+- Must start with a letter
+- No spaces, no special characters (no `$`, no `-`, no `.`)
+- No double underscores (`__`)
+- Cannot end with an underscore
+
+**NEVER declare system variables as flow variables.** `$Record`, `$Record__Prior`, `$Flow.CurrentDate`, `$Flow.CurrentDateTime`, etc. are automatically available — do NOT add them to the `variables` array. Adding `$Record__Prior` as a variable will fail deployment.
+
+---
+
+## CRITICAL: locationX and locationY are REQUIRED on every element
+
+Every flow element — `decisions`, `recordLookups`, `recordCreates`, `recordUpdates`, `assignments`, `actionCalls`, `loops`, `screens`, `customErrors`, `subflows` — **MUST** include `locationX` and `locationY` as integer fields. Omitting them causes: `Required field is missing: locationX`.
+
+The only elements that do NOT take locationX/locationY are: `formulas`, `variables`, `textTemplates`, `choices`, `constants`, and `stages`.
+
+Use these values for Auto-Layout flows (the exact numbers don't matter for Auto-Layout, but they must be present):
+- First element after start: `"locationX": 176, "locationY": 134`
+- Increment `locationY` by ~108 for each subsequent element on the main path
+- Branching elements (fault paths, decision outcomes): offset `locationX` by ~264
+
+Example:
+```json
+{ "name": "Get_Account", "locationX": 176, "locationY": 134, ... },
+{ "name": "Check_Domain",  "locationX": 176, "locationY": 242, ... },
+{ "name": "Send_Email",    "locationX": 176, "locationY": 350, ... },
+{ "name": "Error_Handler", "locationX": 440, "locationY": 242, ... }
+```
 
 ---
 
@@ -708,7 +971,7 @@ Flow variables, formulas, and constants use the Metadata API's `FlowDataType` en
 ### Value references
 
 - `$Record` — the triggering record (record-triggered flows only)
-- `$Record__Prior` — the record's values BEFORE the update (only in update-triggered flows)
+- `$Record__Prior` — the record's values BEFORE the update (only in update-triggered flows). **NEVER declare `$Record` or `$Record__Prior` as variables in the flow metadata** — they are system-provided automatically. If you add them to the `variables` array, the deploy will fail with "Variable Name: The Flow Variable API Name can only contain underscores and alphanumeric characters." Variables starting with `$` are reserved system variables.
 - `$Flow.CurrentDate` — today's date
 - `$Flow.CurrentDateTime` — current date/time
 - `$Api.Partner_Server_URL_290` — org instance URL (useful for building links)
@@ -836,6 +1099,7 @@ Sending an email via the `emailSimple` core action has strict requirements. Get 
 
 | Wrong | Why it fails | Right |
 |---|---|---|
+| Omitting `locationX`/`locationY` on an element | `Required field is missing: locationX` | Add `"locationX": 176, "locationY": <value>` to every element (decisions, recordLookups, assignments, actionCalls, etc.) |
 | `"name": "emailAddresses"` | Not a valid param name | `"name": "emailAddressesArray"` |
 | `"name": "recipientAddresses"` | Not a valid param name | `"name": "emailAddressesArray"` |
 | `{ "stringValue": "a@b.com" }` for recipients | Must be a collection | `{ "elementReference": "EmailRecipients" }` pointing to a `isCollection: true` String var |
@@ -901,15 +1165,69 @@ The `chatterPost` core action posts a Chatter feed item to a record. **It only w
 
 To @mention users in a Chatter post, include the mention syntax in the `text` body: `@[005XXXXXXXXXXXX]` (user Id). But note this requires hardcoding the user Id, which violates the "never hardcode IDs" rule — consider looking up the user and building the mention string dynamically.
 
+### CRITICAL: Correct `chatterPost` action structure
+
+The `chatterPost` action has a very specific structure that differs from `emailSimple`. Getting any field wrong causes "can't find an action with the name and action type" errors. Use this EXACT pattern:
+
+**Post to a record's Chatter feed:**
+
+```json
+{
+  "name": "Post_Chatter_Record",
+  "label": "Post to Chatter Record",
+  "locationX": 176,
+  "locationY": 539,
+  "actionName": "chatterPost",
+  "actionType": "chatterPost",
+  "connector": { "targetReference": "Next_Element" },
+  "flowTransactionModel": "CurrentTransaction",
+  "inputParameters": [
+    { "name": "text", "value": { "elementReference": "MyTextTemplate" } },
+    { "name": "subjectNameOrId", "value": { "elementReference": "$Record.Id" } }
+  ],
+  "nameSegment": "chatterPost",
+  "offset": 0,
+  "storeOutputAutomatically": true
+}
+```
+
+**Post to a user's Chatter feed (add `type: "user"` input parameter):**
+
+```json
+{
+  "name": "Post_Chatter_User",
+  "label": "Post to Chatter User",
+  "locationX": 176,
+  "locationY": 647,
+  "actionName": "chatterPost",
+  "actionType": "chatterPost",
+  "connector": { "targetReference": "Next_Element" },
+  "flowTransactionModel": "CurrentTransaction",
+  "inputParameters": [
+    { "name": "text", "value": { "elementReference": "MyTextTemplate" } },
+    { "name": "subjectNameOrId", "value": { "elementReference": "$Record.OwnerId" } },
+    { "name": "type", "value": { "stringValue": "user" } }
+  ],
+  "nameSegment": "chatterPost",
+  "offset": 0,
+  "storeOutputAutomatically": true
+}
+```
+
+**CRITICAL rules for `chatterPost`:**
+- MUST include `"offset": 0` and `"storeOutputAutomatically": true` — omitting these causes deploy failures
+- Do NOT include `"versionString"` on chatterPost actions — unlike `emailSimple` which uses `"versionString": "1.0.1"`, chatterPost does NOT have a versionString. Including one causes "can't find action" errors
+- `subjectNameOrId` is the record ID or user ID to post on
+- To post on a user's feed instead of a record, add the `type` input parameter with `"stringValue": "user"`
+
 ### When `chatterPost` fails
 
-If the deploy fails with "can't find an action with the name and action type", Chatter is likely disabled in this org. Do NOT retry — instead:
+If the deploy fails with "can't find an action with the name and action type" after using the exact pattern above, Chatter is likely disabled in this org. Do NOT retry — instead:
 
-1. Tell the user: *"The Chatter post action isn't available in this org — Chatter may not be enabled. I can use an alternative: [options below]"*
+1. Tell the user: *"The Chatter post action isn't available in this org — Chatter may not be enabled."*
 2. Offer alternatives:
-   - **Create a Task** instead (`recordCreates` element) — visible in the record's activity timeline
+   - **Create a Task** instead (`recordCreates` with object `Task`) — visible in the record's activity timeline
    - **Send an email notification** — use `emailSimple` (already documented above)
-   - **Create a FeedItem via Apex** — use `execute_anonymous_apex` if the user specifically wants a feed post and Chatter is just misconfigured
 
 ---
 
@@ -1853,6 +2171,254 @@ Before activating any flow, verify:
 - [ ] **Error handling** — verify fault paths fire correctly when DML fails
 - [ ] **Entry conditions** — verify the flow does NOT fire when conditions are not met
 - [ ] **Before-save only updates $Record** — verify no DML elements exist in before-save flows (they'll fail)
+
+## Scheduled Flow structure (CRITICAL — read before building any scheduled flow)
+
+**MANDATORY RULE: When a user asks for a "scheduled flow", ALWAYS create a native Scheduled Flow using `triggerType: "Scheduled"` with a `schedule` object on the `start` element. NEVER create an Autolaunched Flow + Schedulable Apex class combo. The Apex scheduler approach is over-engineered and unnecessary — Salesforce natively supports scheduled flows via the Metadata API.**
+
+Scheduled flows run on a recurring schedule (daily, weekly, etc.) and process a batch of records or perform background work. They use `processType: "AutoLaunchedFlow"` and `triggerType: "Scheduled"`.
+
+### The `start` element for scheduled flows
+
+The `start` element MUST include a `schedule` object. The schedule object has exactly these properties:
+
+```json
+"start": {
+  "locationX": 50,
+  "locationY": 0,
+  "triggerType": "Scheduled",
+  "connector": {
+    "targetReference": "First_Element_Api_Name"
+  },
+  "schedule": {
+    "frequency": "Weekly",
+    "startDate": "2026-04-14",
+    "startTime": "08:00:00.000Z"
+  }
+}
+```
+
+### `schedule.frequency` valid values
+
+| Value | Meaning |
+|-------|---------|
+| `Once` | Run once at the specified date/time |
+| `Daily` | Run every day at the specified time |
+| `Weekly` | Run every week on the day of `startDate` at the specified time |
+
+**CRITICAL rules:**
+- `frequency`, `startDate`, and `startTime` are the ONLY valid properties inside `schedule`
+- There is NO `daysOfWeek`, `weekdays`, `weeklyDayOfWeek`, `weeklyRecurrence`, `monthlyRecurrence`, or `cronExpression` property — these do NOT exist in the Metadata API and will cause deployment errors
+- Do NOT use `scheduledPaths` for scheduled flows. `scheduledPaths` is for record-triggered flows with async scheduled paths (e.g., "run 1 hour after save"). Scheduled flows use `schedule` directly on `start` — these are completely different things
+- For weekly flows, the day-of-week is determined by the `startDate` — if `startDate` falls on a Monday, the flow runs every Monday
+- `startDate` format: `YYYY-MM-DD` (ISO date, no time component)
+- `startTime` format: `HH:MM:SS.000Z` (UTC time with milliseconds)
+- After activation, admins can modify the schedule in the Flow Builder UI, but the metadata API only supports the three fields above
+
+### How to calculate `startDate` for a specific day of the week
+
+If the user asks "run every Monday at 8am", find the next Monday from today and use that as `startDate`. The flow will then recur weekly on that same day.
+
+If the user asks "run every day at midnight", use tomorrow's date as `startDate` with `frequency: "Daily"` and `startTime: "00:00:00.000Z"`.
+
+### Two patterns for scheduled flows
+
+**Pattern 1: Plain scheduled (no object on start)** — The flow runs on a schedule and the body uses `recordLookups` to query whatever records it needs. Good for complex queries with custom filter logic, multiple objects, or aggregate operations.
+
+**Pattern 2: Scheduled with object + filters on start** — The `start` element includes `object`, `filters`, and optionally `filterLogic`. Salesforce automatically queries matching records and runs the flow once per record (like a record-triggered flow on a schedule). Good for simple "find records matching criteria and do something to each" scenarios.
+
+#### Pattern 2 start element example (object + filters on start):
+
+```json
+"start": {
+  "locationX": 56,
+  "locationY": 0,
+  "triggerType": "Scheduled",
+  "connector": { "targetReference": "First_Element" },
+  "object": "Task",
+  "filterLogic": "and",
+  "filters": [
+    { "field": "Status", "operator": "NotEqualTo", "value": { "stringValue": "Completed" } },
+    { "field": "ActivityDate", "operator": "LessThanOrEqualTo", "value": { "elementReference": "$Flow.CurrentDate" } }
+  ],
+  "schedule": {
+    "frequency": "Daily",
+    "startDate": "2026-04-14",
+    "startTime": "05:00:00.000Z"
+  }
+}
+```
+
+When `object` is specified on start, each matching record is available as `$Record` inside the flow — the same as record-triggered flows. You do NOT need a separate `recordLookups` element.
+
+When `object` is NOT specified on start, there is no `$Record`. Use `recordLookups` in the flow body to query whatever data you need.
+
+### Complete scheduled flow example (Pattern 1) — weekly task creation
+
+This flow runs every Monday at 8am, finds open Opportunities closing within 7 days with no recent activity, and creates follow-up Tasks:
+
+```json
+{
+  "apiVersion": "62.0",
+  "processType": "AutoLaunchedFlow",
+  "environments": "Default",
+  "interviewLabel": "Opp Follow Up Tasks {!$Flow.CurrentDateTime}",
+  "processMetadataValues": [
+    { "name": "BuilderType", "value": { "stringValue": "LightningFlowBuilder" } },
+    { "name": "CanvasMode", "value": { "stringValue": "AUTO_LAYOUT_CANVAS" } },
+    { "name": "OriginBuilderType", "value": { "stringValue": "LightningFlowBuilder" } }
+  ],
+  "start": {
+    "locationX": 50,
+    "locationY": 0,
+    "triggerType": "Scheduled",
+    "connector": { "targetReference": "Get_Opps" },
+    "schedule": {
+      "frequency": "Weekly",
+      "startDate": "2026-04-13",
+      "startTime": "08:00:00.000Z"
+    }
+  },
+  "formulas": [
+    { "name": "SevenDaysFromNow", "dataType": "Date", "expression": "{!$Flow.CurrentDate} + 7" },
+    { "name": "FourteenDaysAgo", "dataType": "Date", "expression": "{!$Flow.CurrentDate} - 14" }
+  ],
+  "variables": [
+    { "name": "TasksToCreate", "dataType": "SObject", "objectType": "Task", "isCollection": true, "isInput": false, "isOutput": false },
+    { "name": "CurrentTask", "dataType": "SObject", "objectType": "Task", "isCollection": false, "isInput": false, "isOutput": false },
+    { "name": "FaultEmailRecipients", "dataType": "String", "isCollection": true, "isInput": false, "isOutput": false }
+  ],
+  "textTemplates": [
+    { "name": "FaultEmailBody", "isViewedAsPlainText": true, "text": "The weekly Opportunity follow-up flow failed.\\nError: {!$Flow.FaultMessage}" }
+  ],
+  "recordLookups": [
+    {
+      "name": "Get_Opps",
+      "label": "Get Opps Closing Soon",
+      "object": "Opportunity",
+      "locationX": 176,
+      "locationY": 134,
+      "getFirstRecordOnly": false,
+      "storeOutputAutomatically": true,
+      "filterLogic": "1 AND 2 AND 3 AND (4 OR 5)",
+      "filters": [
+        { "field": "IsClosed", "operator": "EqualTo", "value": { "booleanValue": false } },
+        { "field": "CloseDate", "operator": "GreaterThanOrEqualTo", "value": { "elementReference": "$Flow.CurrentDate" } },
+        { "field": "CloseDate", "operator": "LessThanOrEqualTo", "value": { "elementReference": "SevenDaysFromNow" } },
+        { "field": "LastActivityDate", "operator": "LessThanOrEqualTo", "value": { "elementReference": "FourteenDaysAgo" } },
+        { "field": "LastActivityDate", "operator": "IsNull", "value": { "booleanValue": true } }
+      ],
+      "connector": { "targetReference": "Check_Results" }
+    }
+  ],
+  "decisions": [
+    {
+      "name": "Check_Results",
+      "label": "Any Opps Found?",
+      "locationX": 176,
+      "locationY": 254,
+      "defaultConnectorLabel": "No Records",
+      "rules": [
+        {
+          "name": "Has_Records",
+          "label": "Has Records",
+          "conditionLogic": "and",
+          "conditions": [
+            { "leftValueReference": "Get_Opps", "operator": "IsNull", "rightValue": { "booleanValue": false } }
+          ],
+          "connector": { "targetReference": "Loop_Opps" }
+        }
+      ]
+    }
+  ],
+  "loops": [
+    {
+      "name": "Loop_Opps",
+      "label": "Loop Opps",
+      "locationX": 264,
+      "locationY": 374,
+      "collectionReference": "Get_Opps",
+      "iterationOrder": "Asc",
+      "nextValueConnector": { "targetReference": "Assign_Task" },
+      "noMoreValuesConnector": { "targetReference": "Create_All_Tasks" }
+    }
+  ],
+  "assignments": [
+    {
+      "name": "Assign_Task",
+      "label": "Assign Task Fields",
+      "locationX": 352,
+      "locationY": 494,
+      "assignmentItems": [
+        { "assignToReference": "CurrentTask.OwnerId", "operator": "Assign", "value": { "elementReference": "Loop_Opps.OwnerId" } },
+        { "assignToReference": "CurrentTask.WhatId", "operator": "Assign", "value": { "elementReference": "Loop_Opps.Id" } },
+        { "assignToReference": "CurrentTask.Subject", "operator": "Assign", "value": { "stringValue": "Follow up required — closing soon" } },
+        { "assignToReference": "CurrentTask.ActivityDate", "operator": "Assign", "value": { "elementReference": "$Flow.CurrentDate" } },
+        { "assignToReference": "CurrentTask.Priority", "operator": "Assign", "value": { "stringValue": "High" } }
+      ],
+      "connector": { "targetReference": "Add_To_Collection" }
+    },
+    {
+      "name": "Add_To_Collection",
+      "label": "Add Task to Collection",
+      "locationX": 352,
+      "locationY": 614,
+      "assignmentItems": [
+        { "assignToReference": "TasksToCreate", "operator": "Add", "value": { "elementReference": "CurrentTask" } }
+      ],
+      "connector": { "targetReference": "Loop_Opps" }
+    },
+    {
+      "name": "Set_Fault_Recipients",
+      "label": "Set Fault Recipients",
+      "locationX": 594,
+      "locationY": 494,
+      "assignmentItems": [
+        { "assignToReference": "FaultEmailRecipients", "operator": "Add", "value": { "stringValue": "admin@example.com" } }
+      ],
+      "connector": { "targetReference": "Send_Fault_Email" }
+    }
+  ],
+  "recordCreates": [
+    {
+      "name": "Create_All_Tasks",
+      "label": "Create All Tasks",
+      "locationX": 264,
+      "locationY": 814,
+      "inputReference": "TasksToCreate",
+      "faultConnector": { "targetReference": "Set_Fault_Recipients" }
+    }
+  ],
+  "actionCalls": [
+    {
+      "name": "Send_Fault_Email",
+      "label": "Send Fault Email",
+      "locationX": 594,
+      "locationY": 614,
+      "actionType": "emailSimple",
+      "actionName": "emailSimple",
+      "nameSegment": "emailSimple",
+      "versionString": "1.0.1",
+      "flowTransactionModel": "CurrentTransaction",
+      "inputParameters": [
+        { "name": "emailAddressesArray", "value": { "elementReference": "FaultEmailRecipients" } },
+        { "name": "emailSubject", "value": { "stringValue": "Flow Error: Opp Follow Up Tasks" } },
+        { "name": "emailBody", "value": { "elementReference": "FaultEmailBody" } },
+        { "name": "sendRichBody", "value": { "booleanValue": true } }
+      ]
+    }
+  ]
+}
+```
+
+### Key patterns in the example above
+
+1. **Pattern 1 (no object on `start`)** — the `recordLookups` element queries Opportunity, not the start trigger. Use this when you need complex filter logic or multiple objects.
+2. **Collection pattern** — uses a loop + assignment + `Add` operator to build a Task collection, then a single `recordCreates` to bulk-insert all tasks
+3. **Fault handling** — `faultConnector` on the DML element routes to an email notification via `emailSimple`
+4. **Formula fields for date math** — `SevenDaysFromNow` and `FourteenDaysAgo` computed with `$Flow.CurrentDate`
+5. **`iterationOrder: "Asc"`** — the only valid values are `Asc` and `Desc` (NOT `Ascending`, `Descending`, `FirstItemIn`, or `LastItemIn`)
+6. **When to use Pattern 2 instead** — if the requirement is simply "find all records matching X and do Y to each", use `object` + `filters` on start. The flow runs per-record with `$Record` available, and you don't need a `recordLookups` or loop.
 
 ## Flow type selection guide
 
