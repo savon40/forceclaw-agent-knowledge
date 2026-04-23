@@ -1,0 +1,7 @@
+This is a Partnership Contact
+
+Name: {!Contact.Name}
+Email: {!Contact.Email}
+Account: {!Contact.Account_Name__c}
+Campaign Responded To: {!Contact.Responded_Campaign__c}
+Link to Contact: {!Contact.Link}

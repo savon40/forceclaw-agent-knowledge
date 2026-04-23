@@ -1,0 +1,8 @@
+This is a webinar MQL. Please add them to the EVENT/WEBINAR FOLLOW UP Gong Flow and personalize based on the webinar they attended.
+
+First Name : {!Contact.FirstName}
+Last Name: {!Contact.LastName}
+Email: {!Contact.Email}
+Account: {!Contact.Account_Name__c}
+Campaign Responded To: {!Contact.Responded_Campaign__c}
+Link to Contact: {!Contact.Link}

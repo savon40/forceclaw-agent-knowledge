@@ -1,0 +1,813 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>61.0</apiVersion>
+    <assignments>
+        <description>Assign Opportunity Count</description>
+        <name>Assign_Opportunity_Count</name>
+        <label>Assign Opportunity Count</label>
+        <locationX>50</locationX>
+        <locationY>1547</locationY>
+        <assignmentItems>
+            <assignToReference>OppoCount</assignToReference>
+            <operator>AssignCount</operator>
+            <value>
+                <elementReference>Get_Opportunity_based_on_Primary_Contact</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Update_Contact_Opportunity_Count</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <description>Collect ACV on Insert</description>
+        <name>Collect_ACV_on_Insert</name>
+        <label>Collect ACV on Insert</label>
+        <locationX>50</locationX>
+        <locationY>2147</locationY>
+        <assignmentItems>
+            <assignToReference>ACVInsert</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>$Record.ACV__c</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Check_MRR_Formula_field_on_Insert</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <description>Collect ACV on Update</description>
+        <name>Collect_ACV_on_Update</name>
+        <label>Collect ACV on Update</label>
+        <locationX>754</locationX>
+        <locationY>1439</locationY>
+        <assignmentItems>
+            <assignToReference>ACVUpdate</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>$Record.ACV__c</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Check_MRR_Formula_field_on_update</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <description>Collect MRR on Insert</description>
+        <name>Collect_MRR_on_Insert</name>
+        <label>Collect MRR on Insert</label>
+        <locationX>50</locationX>
+        <locationY>2447</locationY>
+        <assignmentItems>
+            <assignToReference>MRRInsert</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>$Record.Monthly_Fee__c</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Update_ACV_and_MRR_Forecast_fields_on_insert</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <description>Collect MRR on Insert</description>
+        <name>Copy_1_of_Collect_MRR_on_Insert</name>
+        <label>Collect MRR on Insert</label>
+        <locationX>754</locationX>
+        <locationY>1739</locationY>
+        <assignmentItems>
+            <assignToReference>MRRUpdate</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>$Record.Monthly_Fee__c</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Update_ACV_and_MRR_Forecast_fields_on_update</targetReference>
+        </connector>
+    </assignments>
+    <decisions>
+        <description>Check ACV Formula field on Insert</description>
+        <name>Check_ACV_Formula_field_on_Insert</name>
+        <label>Check ACV Formula field on Insert</label>
+        <locationX>182</locationX>
+        <locationY>2039</locationY>
+        <defaultConnector>
+            <targetReference>Check_MRR_Formula_field_on_Insert</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsACVInsert</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.ACV__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.ACV__c</leftValueReference>
+                <operator>NotEqualTo</operator>
+                <rightValue>
+                    <numberValue>0.0</numberValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Collect_ACV_on_Insert</targetReference>
+            </connector>
+            <label>IsACVInsert</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check ACV Formula field on Update</description>
+        <name>Check_ACV_Formula_field_on_Update</name>
+        <label>Check ACV Formula field on Update</label>
+        <locationX>886</locationX>
+        <locationY>1331</locationY>
+        <defaultConnector>
+            <targetReference>Check_MRR_Formula_field_on_update</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsACVUpdate</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.ACV__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.ACV__c</leftValueReference>
+                <operator>NotEqualTo</operator>
+                <rightValue>
+                    <numberValue>0.0</numberValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Collect_ACV_on_Update</targetReference>
+            </connector>
+            <label>IsACVUpdate</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check First Opp Closed date on insert</description>
+        <name>Check_First_Opp_Closed_date_on_insert</name>
+        <label>Check First Opp Closed date on insert</label>
+        <locationX>182</locationX>
+        <locationY>839</locationY>
+        <defaultConnector>
+            <targetReference>Check_Primary_Contact_on_Opportunity</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsFirstOppDateOnInsert</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Account.First_Opp_Closed_Date__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Update_First_Opp_Closed_Date_on_Insert</targetReference>
+            </connector>
+            <label>IsFirstOppDateOnInsert</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check First Opp Closed date on update</description>
+        <name>Check_First_Opp_Closed_date_on_update</name>
+        <label>Check First Opp Closed date on update</label>
+        <locationX>886</locationX>
+        <locationY>839</locationY>
+        <defaultConnector>
+            <targetReference>Check_Forecast_field_updation_on_update</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsFirstOppDateOnUpdate</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Account.First_Opp_Closed_Date__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Update_First_Opp_Closed_Date_on_Update</targetReference>
+            </connector>
+            <label>IsFirstOppDateOnUpdate</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check Forecast field updation on Insert</description>
+        <name>Check_Forecast_field_updation_on_Insert</name>
+        <label>Check Forecast field updation on Insert</label>
+        <locationX>336</locationX>
+        <locationY>1931</locationY>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsForecastInsert</name>
+            <conditionLogic>or</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Forecasting_ACV__c</leftValueReference>
+                <operator>IsChanged</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.Forecasting_MRR__c</leftValueReference>
+                <operator>IsChanged</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Check_ACV_Formula_field_on_Insert</targetReference>
+            </connector>
+            <label>IsForecastInsert</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check Forecast field update on update</description>
+        <name>Check_Forecast_field_updation_on_update</name>
+        <label>Check Forecast field updation on update</label>
+        <locationX>1040</locationX>
+        <locationY>1223</locationY>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsForecastUpdate</name>
+            <conditionLogic>or</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Forecasting_ACV__c</leftValueReference>
+                <operator>IsChanged</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.Forecasting_MRR__c</leftValueReference>
+                <operator>IsChanged</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Check_ACV_Formula_field_on_Update</targetReference>
+            </connector>
+            <label>IsForecastUpdate</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check Insertion or Updation</description>
+        <name>Check_Insertion_or_Updation</name>
+        <label>Check Insertion or Updation</label>
+        <locationX>688</locationX>
+        <locationY>323</locationY>
+        <defaultConnector>
+            <targetReference>Check_Opportunity_stage_qualification_in_update</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsNew</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>IsNewRecord</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Check_Opportunity_stage_qualification_in_insert</targetReference>
+            </connector>
+            <label>IsNew</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check MRR Formula field on Insert</description>
+        <name>Check_MRR_Formula_field_on_Insert</name>
+        <label>Check MRR Formula field on Insert</label>
+        <locationX>182</locationX>
+        <locationY>2339</locationY>
+        <defaultConnector>
+            <targetReference>Update_ACV_and_MRR_Forecast_fields_on_insert</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsMRRInsert</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Monthly_Fee__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.Monthly_Fee__c</leftValueReference>
+                <operator>NotEqualTo</operator>
+                <rightValue>
+                    <numberValue>0.0</numberValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Collect_MRR_on_Insert</targetReference>
+            </connector>
+            <label>IsMRRInsert</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check MRR Formula field on update</description>
+        <name>Check_MRR_Formula_field_on_update</name>
+        <label>Check MRR Formula field on update</label>
+        <locationX>886</locationX>
+        <locationY>1631</locationY>
+        <defaultConnector>
+            <targetReference>Update_ACV_and_MRR_Forecast_fields_on_update</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsMRRUpdate</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Monthly_Fee__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.Monthly_Fee__c</leftValueReference>
+                <operator>NotEqualTo</operator>
+                <rightValue>
+                    <numberValue>0.0</numberValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Copy_1_of_Collect_MRR_on_Insert</targetReference>
+            </connector>
+            <label>IsMRRUpdate</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check Opportunity Records</description>
+        <name>Check_Opportunity_Records</name>
+        <label>Check Opportunity Records</label>
+        <locationX>182</locationX>
+        <locationY>1439</locationY>
+        <defaultConnector>
+            <targetReference>Check_Forecast_field_updation_on_Insert</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsOpportunityRecord</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Opportunity_based_on_Primary_Contact</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Assign_Opportunity_Count</targetReference>
+            </connector>
+            <label>IsOpportunityRecord</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check Opportunity Stage Name on Insert</description>
+        <name>Check_Opportunity_Stage_Name_on_Insert</name>
+        <label>Check Opportunity Stage Name on Insert</label>
+        <locationX>336</locationX>
+        <locationY>731</locationY>
+        <defaultConnector>
+            <targetReference>Check_Primary_Contact_on_Opportunity</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsClosedWonorLostOnInsert</name>
+            <conditionLogic>or</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.StageName</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Closed Won</stringValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.StageName</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Closed Lost</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Check_First_Opp_Closed_date_on_insert</targetReference>
+            </connector>
+            <label>IsClosedWonorLostOnInsert</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check Opportunity Stage Name on Insert</description>
+        <name>Check_Opportunity_Stage_Name_on_Update</name>
+        <label>Check Opportunity Stage Name on Update</label>
+        <locationX>1040</locationX>
+        <locationY>731</locationY>
+        <defaultConnector>
+            <targetReference>Check_Forecast_field_updation_on_update</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>Copy_1_of_IsClosedWonorLostOnInsert</name>
+            <conditionLogic>(1 OR 2) AND 3</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.StageName</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Closed Won</stringValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.StageName</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Closed Lost</stringValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.StageName</leftValueReference>
+                <operator>IsChanged</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Check_First_Opp_Closed_date_on_update</targetReference>
+            </connector>
+            <label>IsClosedWonorLostOnUpdate</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check Opportunity stage qualification in insert</description>
+        <name>Check_Opportunity_stage_qualification_in_insert</name>
+        <label>Check Opportunity stage qualification in insert</label>
+        <locationX>336</locationX>
+        <locationY>431</locationY>
+        <defaultConnector>
+            <targetReference>Check_Opportunity_Stage_Name_on_Insert</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsStageQualificationOnInsert</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.StageName</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Qualification</stringValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.Primary_Contact__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>update_opportunity_primary_contact_on_insert</targetReference>
+            </connector>
+            <label>IsStageQualificationOnInsert</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check Opportunity stage qualification in update</description>
+        <name>Check_Opportunity_stage_qualification_in_update</name>
+        <label>Check Opportunity stage qualification in update</label>
+        <locationX>1040</locationX>
+        <locationY>431</locationY>
+        <defaultConnector>
+            <targetReference>Check_Opportunity_Stage_Name_on_Update</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsStageQualificationOnUpdate</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.StageName</leftValueReference>
+                <operator>IsChanged</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.StageName</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Qualification</stringValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.Primary_Contact__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>update_opportunity_primary_contact_on_update</targetReference>
+            </connector>
+            <label>IsStageQualificationOnUpdate</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Check Primary Contact on Opportunity</description>
+        <name>Check_Primary_Contact_on_Opportunity</name>
+        <label>Check Primary Contact on Opportunity</label>
+        <locationX>336</locationX>
+        <locationY>1223</locationY>
+        <defaultConnector>
+            <targetReference>Check_Forecast_field_updation_on_Insert</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>IsPrimaryContact</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Primary_Contact__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_Opportunity_based_on_Primary_Contact</targetReference>
+            </connector>
+            <label>IsPrimaryContact</label>
+        </rules>
+    </decisions>
+    <description>Opportunity After Insert/Update Flow</description>
+    <environments>Default</environments>
+    <formulas>
+        <description>CurrentDateTime</description>
+        <name>CurrentDateTime</name>
+        <dataType>DateTime</dataType>
+        <expression>NOW()</expression>
+    </formulas>
+    <formulas>
+        <description>IsNewRecord</description>
+        <name>IsNewRecord</name>
+        <dataType>Boolean</dataType>
+        <expression>ISNEW()</expression>
+    </formulas>
+    <interviewLabel>Opportunity After Insert/Update Flow {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Opportunity After Insert/Update Flow</label>
+    <processMetadataValues>
+        <name>BuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>CanvasMode</name>
+        <value>
+            <stringValue>AUTO_LAYOUT_CANVAS</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>OriginBuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processType>AutoLaunchedFlow</processType>
+    <recordLookups>
+        <description>Get Opportunity based on Primary Contact</description>
+        <name>Get_Opportunity_based_on_Primary_Contact</name>
+        <label>Get Opportunity based on Primary Contact</label>
+        <locationX>182</locationX>
+        <locationY>1331</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Check_Opportunity_Records</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Primary_Contact__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Primary_Contact__c</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>false</getFirstRecordOnly>
+        <object>Opportunity</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordUpdates>
+        <description>Update ACV and MRR Forecast fields on insert</description>
+        <name>Update_ACV_and_MRR_Forecast_fields_on_insert</name>
+        <label>Update ACV and MRR Forecast fields on insert</label>
+        <locationX>182</locationX>
+        <locationY>2639</locationY>
+        <inputAssignments>
+            <field>Forecasting_ACV__c</field>
+            <value>
+                <elementReference>ACVInsert</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Forecasting_MRR__c</field>
+            <value>
+                <elementReference>MRRInsert</elementReference>
+            </value>
+        </inputAssignments>
+        <inputReference>$Record</inputReference>
+    </recordUpdates>
+    <recordUpdates>
+        <description>Update ACV and MRR Forecast fields on update</description>
+        <name>Update_ACV_and_MRR_Forecast_fields_on_update</name>
+        <label>Update ACV and MRR Forecast fields on update</label>
+        <locationX>886</locationX>
+        <locationY>1931</locationY>
+        <inputAssignments>
+            <field>Forecasting_ACV__c</field>
+            <value>
+                <elementReference>ACVUpdate</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Forecasting_MRR__c</field>
+            <value>
+                <elementReference>MRRUpdate</elementReference>
+            </value>
+        </inputAssignments>
+        <inputReference>$Record</inputReference>
+    </recordUpdates>
+    <recordUpdates>
+        <description>Update Contact Opportunity Count</description>
+        <name>Update_Contact_Opportunity_Count</name>
+        <label>Update Contact Opportunity Count</label>
+        <locationX>50</locationX>
+        <locationY>1655</locationY>
+        <connector>
+            <targetReference>Check_Forecast_field_updation_on_Insert</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Id</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Primary_Contact__c</elementReference>
+            </value>
+        </filters>
+        <inputAssignments>
+            <field>Opportunity_Count__c</field>
+            <value>
+                <elementReference>OppoCount</elementReference>
+            </value>
+        </inputAssignments>
+        <object>Contact</object>
+    </recordUpdates>
+    <recordUpdates>
+        <description>Update First Opp Closed Date on Insert</description>
+        <name>Update_First_Opp_Closed_Date_on_Insert</name>
+        <label>Update First Opp Closed Date on Insert</label>
+        <locationX>50</locationX>
+        <locationY>947</locationY>
+        <connector>
+            <targetReference>Check_Primary_Contact_on_Opportunity</targetReference>
+        </connector>
+        <inputAssignments>
+            <field>First_Opp_Closed_Date__c</field>
+            <value>
+                <elementReference>$Record.CloseDate</elementReference>
+            </value>
+        </inputAssignments>
+        <inputReference>$Record.Account</inputReference>
+    </recordUpdates>
+    <recordUpdates>
+        <description>Update First Opp Closed Date on Update</description>
+        <name>Update_First_Opp_Closed_Date_on_Update</name>
+        <label>Update First Opp Closed Date on Update</label>
+        <locationX>754</locationX>
+        <locationY>947</locationY>
+        <connector>
+            <targetReference>Check_Forecast_field_updation_on_update</targetReference>
+        </connector>
+        <inputAssignments>
+            <field>First_Opp_Closed_Date__c</field>
+            <value>
+                <elementReference>$Record.CloseDate</elementReference>
+            </value>
+        </inputAssignments>
+        <inputReference>$Record.Account</inputReference>
+    </recordUpdates>
+    <recordUpdates>
+        <description>update opportunity primary contact on insert</description>
+        <name>update_opportunity_primary_contact_on_insert</name>
+        <label>update opportunity primary contact on insert</label>
+        <locationX>204</locationX>
+        <locationY>539</locationY>
+        <connector>
+            <targetReference>Check_Opportunity_Stage_Name_on_Insert</targetReference>
+        </connector>
+        <inputAssignments>
+            <field>SQL_Date__c</field>
+            <value>
+                <elementReference>$Flow.CurrentDate</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>SQL__c</field>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </inputAssignments>
+        <inputReference>$Record.Primary_Contact__r</inputReference>
+    </recordUpdates>
+    <recordUpdates>
+        <description>update opportunity primary contact on update</description>
+        <name>update_opportunity_primary_contact_on_update</name>
+        <label>update opportunity primary contact on update</label>
+        <locationX>908</locationX>
+        <locationY>539</locationY>
+        <connector>
+            <targetReference>Check_Opportunity_Stage_Name_on_Update</targetReference>
+        </connector>
+        <inputAssignments>
+            <field>SQL_Date__c</field>
+            <value>
+                <elementReference>$Flow.CurrentDate</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>SQL__c</field>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </inputAssignments>
+        <inputReference>$Record.Primary_Contact__r</inputReference>
+    </recordUpdates>
+    <start>
+        <locationX>562</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Check_Insertion_or_Updation</targetReference>
+        </connector>
+        <object>Opportunity</object>
+        <recordTriggerType>CreateAndUpdate</recordTriggerType>
+        <triggerType>RecordAfterSave</triggerType>
+    </start>
+    <status>Active</status>
+    <variables>
+        <description>ACVInsert</description>
+        <name>ACVInsert</name>
+        <dataType>Currency</dataType>
+        <isCollection>false</isCollection>
+        <isInput>true</isInput>
+        <isOutput>true</isOutput>
+        <scale>2</scale>
+    </variables>
+    <variables>
+        <description>ACVUpdate</description>
+        <name>ACVUpdate</name>
+        <dataType>Currency</dataType>
+        <isCollection>false</isCollection>
+        <isInput>true</isInput>
+        <isOutput>true</isOutput>
+        <scale>2</scale>
+    </variables>
+    <variables>
+        <name>MRRInsert</name>
+        <dataType>Currency</dataType>
+        <isCollection>false</isCollection>
+        <isInput>true</isInput>
+        <isOutput>true</isOutput>
+        <scale>2</scale>
+    </variables>
+    <variables>
+        <description>MRRUpdate</description>
+        <name>MRRUpdate</name>
+        <dataType>Currency</dataType>
+        <isCollection>false</isCollection>
+        <isInput>true</isInput>
+        <isOutput>true</isOutput>
+        <scale>2</scale>
+    </variables>
+    <variables>
+        <name>OppoCount</name>
+        <dataType>Number</dataType>
+        <isCollection>false</isCollection>
+        <isInput>false</isInput>
+        <isOutput>false</isOutput>
+        <scale>2</scale>
+    </variables>
+</Flow>
