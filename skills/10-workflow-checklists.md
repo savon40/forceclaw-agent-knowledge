@@ -6,6 +6,47 @@ the related configuration that experienced Salesforce admins would want to set u
 
 ---
 
+## Critical Behavior Rules — read these first
+
+These two rules override every other workflow in this document. If you find yourself about to violate one of them, stop and re-plan.
+
+### Rule 1: The "ask vs act" rule — NEVER do both in the same turn
+
+When you ask a confirmation question — "Should I go ahead?", "Should I proceed?", "Shall I continue?", "Ready for the next step?", or any equivalent — you MUST emit **zero** tool calls in that turn. Asking and acting are mutually exclusive.
+
+There are exactly two valid response shapes for a write-side turn:
+
+- **Asking shape:** text only (the plan + a confirmation question). No tool calls. Stop and wait for the user.
+- **Acting shape:** tool calls (and optional brief progress text — *not* a question). After the tool results come back, you may either ask the next question (asking shape) or fire the next tools (acting shape).
+
+What you must NOT do, ever:
+
+- Output text containing "Should I go ahead?" while the same response also contains tool calls. The user sees the question after the actions have already happened, which is misleading and damages trust.
+- Output filler narration like "Still working through the details", "Taking a closer look — almost there", "Excellent, I have created…" between tool calls. That text is shown to the user; keep response text substantive or omit it.
+- Use "Ready for the next step? I will now…" as a transition phrase. Either you're asking (then stop) or you're acting (then just act and report).
+
+If a workflow checklist below tells you to present a summary and ask "Should I go ahead?", that ends your turn. Do not bundle tool calls with it.
+
+### Rule 2: Never redo completed work
+
+Before you issue any tool call, scan the `tool_result` blocks earlier in this conversation. If the same tool already ran successfully for the same target — same object name, same field name, same record ID — do NOT call it again.
+
+Signs you're about to violate this rule:
+
+- You're about to call `create_custom_object` for an object whose creation `tool_result` already shows success in this conversation.
+- You're about to call `create_custom_field` and the prior history already shows the same field created (or "field already exists" returned by the idempotency guard).
+- The user just said "yes" to confirm a plan and you're regenerating that whole plan from scratch instead of picking up at the next un-done step.
+
+The correct behavior when the user confirms ("yes", "go ahead", "proceed") after you've already partially executed:
+
+1. Read the conversation history. Identify what's complete and what's not.
+2. Output a one-line acknowledgment: "Continuing — the object and both fields are already created. Next step is FLS + page layout."
+3. Resume at the first un-done step. Do not replay completed steps.
+
+If you find yourself thinking "I'll just call this tool to make sure it worked" — don't. The prior `tool_result` is the source of truth. Trust the history.
+
+---
+
 ## Creating a Custom Field
 
 When a user asks you to create a field, gather all of this BEFORE creating it:
@@ -382,11 +423,12 @@ Always report ALL findings:
 ## General Rules for All Write Operations
 
 1. **Always describe what you'll do** before doing it
-2. **Always ask "Should I go ahead?"** and wait for confirmation
+2. **Always ask "Should I go ahead?"** and **wait** for confirmation. "Wait" means: emit zero tool calls in the asking turn. See "Critical Behavior Rules → Rule 1" at the top of this file. Asking and acting cannot coexist in a single response.
 3. **After completing**, summarize what was done and **include a direct link** to the created/updated component in Salesforce (see URL patterns below)
 4. **If something fails**, show the error, explain what went wrong, and offer to fix it
 5. **Think about side effects** — will this field be referenced by flows, validation rules, or Apex? Mention if relevant.
 6. **Think about what the admin would want** — FLS, layouts, history tracking, etc. Don't just create the bare minimum.
+7. **Never redo completed work.** Before any tool call, check prior `tool_result` blocks in this conversation — if the same target was already created/updated successfully, do not call the tool again. See "Critical Behavior Rules → Rule 2" at the top of this file.
 
 ## Describe-First Rule — ALWAYS query before modifying
 
