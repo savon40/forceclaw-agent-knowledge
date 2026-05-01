@@ -51,6 +51,64 @@ The full queryable column list on `WorkflowAlert` is: `Id, DeveloperName, FullNa
 
 `find_email_alerts` handles the template-name → template-id resolution and the join back to template Subject for you.
 
+### Don't SELECT or ORDER BY EntityDefinition.QualifiedApiName from WorkflowAlert
+
+`EntityDefinition.QualifiedApiName` is the cross-object relationship to the parent object's API name. On WorkflowAlert it works **only in the WHERE clause**. Putting it in SELECT or ORDER BY can fail with a generic Salesforce internal error on production orgs:
+
+```
+An unexpected error occurred. Please include this ErrorId if you contact support: <opaque-id>
+```
+
+The error gives you nothing to debug — there's no "field not found" or "permission denied" message. The fix: select `EntityDefinitionId` (the raw FK) instead, then resolve to the parent object's API name with a separate Tooling query:
+
+```sql
+-- WRONG — cross-object SELECT/ORDER BY can throw generic SF error
+SELECT Id, DeveloperName, EntityDefinition.QualifiedApiName, TemplateId
+FROM WorkflowAlert
+WHERE EntityDefinition.QualifiedApiName = 'Contact'
+ORDER BY EntityDefinition.QualifiedApiName, DeveloperName
+
+-- CORRECT — keep cross-object filter in WHERE, resolve names separately
+SELECT Id, DeveloperName, EntityDefinitionId, TemplateId
+FROM WorkflowAlert
+WHERE EntityDefinition.QualifiedApiName = 'Contact'
+ORDER BY DeveloperName
+
+-- Then a follow-up to resolve the IDs:
+SELECT Id, QualifiedApiName FROM EntityDefinition WHERE Id IN ('01I...', '01I...')
+```
+
+`find_email_alerts` does this split internally, so the dedicated tool is fine. Only worry about this if you're falling back to `query_tooling` directly.
+
+### Template.Name and Template.Subject don't traverse from WorkflowAlert
+
+The `Template` relationship on WorkflowAlert (which points to EmailTemplate) **is not traversable in SELECT** via Tooling API. This shape errors:
+
+```sql
+-- WRONG — Template.Name / Template.Subject SELECT will fail
+SELECT DeveloperName, Template.Name, Template.Subject FROM WorkflowAlert WHERE ...
+```
+
+To get the template's Name and Subject, fetch the alerts first with `TemplateId`, then issue a second query for the templates by Id:
+
+```sql
+SELECT Id, Name, Subject FROM EmailTemplate WHERE Id IN ('00X...', '00X...')
+```
+
+### EmailTemplate via Tooling API: prefer `Name`, not `DeveloperName`
+
+EmailTemplate is queryable via both standard SOQL (`query_salesforce`) and Tooling (`query_tooling`), but the available field set differs. Via Tooling, `DeveloperName` may not be selectable depending on the org's API version — selecting it can throw "No such column 'DeveloperName' on EmailTemplate". `Name` is reliably available everywhere.
+
+```sql
+-- Safer via Tooling — Name + Subject are reliable
+SELECT Id, Name, Subject FROM EmailTemplate WHERE Id IN ('00X...', '00X...')
+
+-- Risky via Tooling — may fail on DeveloperName
+SELECT Id, DeveloperName, Subject FROM EmailTemplate WHERE Id IN ('00X...', '00X...')
+```
+
+If you do need `DeveloperName` and `query_salesforce` is blocked (production with `readData: false`), `find_email_templates` is the right tool — it always works because it uses the appropriate API path.
+
 ### Subjects are not unique
 
 Two or more EmailTemplate records can have the same Subject. **Always return all matches** when answering a "which template has subject X" question — picking the first match silently can point the user at the wrong template (and then the wrong downstream alert/flow). `find_email_templates` returns all matches by design.
