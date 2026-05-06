@@ -4,6 +4,22 @@
 
 This skill applies when working with **dev/sandbox orgs** where write access is enabled. For production orgs, you can only view Apex metadata — not source code or make changes.
 
+## Review gate by change type
+
+Different Apex changes need different review lenses. Don't run the same checklist for every change — match the gate to the kind of work.
+
+| Change type | Required review | Test discipline |
+|---|---|---|
+| **Trigger** | Handler pattern, operation context, recursion guard, Salesforce order of execution, Flow interaction, bulk behavior | Bulk tests (200+ records), changed-vs-unchanged field paths, delete/undelete when relevant |
+| **Controller** (LWC/Aura/REST) | UI/API contract, DTO shape, sharing posture, CRUD/FLS, user-mode vs system-mode | Focused tests for each public method, caller inspection (which LWC/Aura calls it), error paths surfaced as toast/error |
+| **Async** (Queueable / Batch / Schedulable / @future) | Enqueue path, transaction boundary, side effects, idempotency on retry | `Test.startTest()` / `Test.stopTest()` boundary, durable result assertions, retry de-duplication |
+| **Callout** | Named credentials, mocks for every path, failure handling, callout-after-DML rules | Mock success, auth failure, missing config, provider-specific responses — every path has a mock |
+| **Files** (`ContentVersion`, `ContentDocument`, `ContentDocumentLink`) | Latest-version behavior, parent record state refresh, sharing for portal/Experience users | File lifecycle assertions (insert version → query DocumentId → verify Link → assert latest), `@IsTest(isParallel=false)` only where row locks force it |
+| **Communication** (email, Chatter, activity, notifications) | Actor context, target record, body/template source, idempotency for retries, sanitized failure logging | Duplicate-prevention assertions, async completion, missing-template/config paths |
+| **Test-only** | Production contract preserved, test data created in the test or factory | Re-run only the focused failing tests; don't ship broad rewrites in a hotfix |
+
+When reporting back, name the gate you used. A trigger change reviewed under the "controller" gate will miss recursion and order-of-execution risks.
+
 ## Code style conventions
 
 ### Naming
@@ -128,6 +144,23 @@ update accounts; // bulk DML
 - **6 MB heap size** (synchronous), **12 MB** (async)
 - **10 seconds CPU time** (synchronous), **60 seconds** (async)
 
+> Exact numeric limits are release-sensitive. When the precise number matters, link to or quote Salesforce's current governor-limit docs rather than hard-coding values that may drift.
+
+### Governor-limit risk by area
+
+Don't add a generic "watch out for governor limits" warning. Tie the risk to where it actually shows up:
+
+| Area | Limit risk to inspect |
+|---|---|
+| **Trigger** | Records per transaction, SOQL/DML count, duplicate DML rows, recursion depth, async enqueue count per record |
+| **Service class** | Query row volume, CPU-heavy loops, map size, callout/DML ordering |
+| **Async Apex** | Chain depth, batch scope size, retry duplication, per-scope query/DML volume |
+| **Files / PDFs** | Heap (base64 strings, large blobs), `ContentVersion` row locks, version queries, generated-document handoff |
+| **Tests** | One `executeBatch` per test method, test data volume, file row locks, callout mock setup |
+| **Dynamic SOQL** | Injection risk, unbounded filters, unselective queries, missing field allowlists |
+
+When a limit is the actual risk for the change, name the mitigation and the validation evidence in the Slack summary. Don't paste the full numeric table.
+
 ## Common Apex patterns
 
 ### Null-safe field access
@@ -234,8 +267,31 @@ System.debug('CPU time used: ' + Limits.getCpuTime() + '/' + Limits.getLimitCpuT
 
 ## CRUD/FLS security patterns
 
-### Modern approach (API 62.0+) — preferred
-Use `WITH USER_MODE` in SOQL to enforce field-level security automatically:
+### Sharing keyword vs CRUD/FLS — they solve different problems
+
+`with sharing` is **not** the same as enforcing CRUD/FLS. The sharing keyword controls **which records** the user can access (record-level visibility). CRUD/FLS controls **which objects and fields** the user can read/write (object-level and field-level access). A class declared `with sharing` can still leak fields the user shouldn't see if you don't enforce field-level security separately.
+
+| Concern | What enforces it |
+|---|---|
+| Which records the user sees | `with sharing` / `inherited sharing` keywords + sharing rules / OWD / role hierarchy |
+| Whether the user can read/edit/delete the object at all | Object permissions (CRUD) — checked via user-mode, `Schema.sObjectType.X.isAccessible()`, or `WITH SECURITY_ENFORCED` |
+| Whether the user can see/edit each field | Field-level security (FLS) — checked via user-mode, `stripInaccessible`, `WITH SECURITY_ENFORCED`, or `Schema.SObjectField.isAccessible()` |
+| Whether the user can perform a business action | Custom permissions, permission sets, profile permissions — checked via `FeatureManagement` or `User.hasPermission` |
+
+When the user asks for "secure" Apex, ask which of these they actually want. Most "I want CRUD/FLS enforced" requests turn out to need both sharing AND field/object enforcement.
+
+### Four strategies for enforcing CRUD/FLS
+
+Each one solves a different shape of problem. Pick the one that matches the situation; don't reflex to the same one every time.
+
+| Strategy | Behavior | When to use |
+|---|---|---|
+| **`WITH USER_MODE` / `AccessLevel.USER_MODE`** | Auto-enforces both object and field access; throws on violation | Static SOQL/DML in user-facing code (controllers, invocables). API 62.0+. Preferred default for new exposed Apex. |
+| **`Security.stripInaccessible()`** | Returns the records with inaccessible fields **silently removed** | When you want to return whatever the user is allowed to see, without throwing. Useful for list views or DTO responses where partial data is OK. |
+| **`WITH SECURITY_ENFORCED`** | Throws on any inaccessible field in the SELECT clause | Dynamic SOQL in user-facing code where you'd rather fail loudly than silently filter. Older alternative to user-mode. |
+| **Describe checks (`Schema.sObjectType.X.isAccessible()`)** | Manual programmatic check before access | Dynamic field allowlists, conditional logic based on access, when none of the above fits the contract |
+
+### `WITH USER_MODE` — preferred default (API 62.0+)
 ```apex
 List<Account> accounts = [
     SELECT Id, Name, AnnualRevenue
@@ -243,23 +299,46 @@ List<Account> accounts = [
     WHERE Industry = 'Technology'
     WITH USER_MODE
 ];
-```
 
-For DML operations:
-```apex
 Database.insert(accounts, AccessLevel.USER_MODE);
 Database.update(accounts, AccessLevel.USER_MODE);
 ```
 
-### Legacy approach (pre-62.0)
-Use `Security.stripInaccessible()`:
+### `Security.stripInaccessible()` — silent filter
 ```apex
 SObjectAccessDecision decision = Security.stripInaccessible(
     AccessType.READABLE,
     [SELECT Id, Name, SSN__c FROM Contact]
 );
 List<Contact> safeContacts = decision.getRecords();
-// SSN__c will be stripped if user lacks FLS read access
+// SSN__c removed if user lacks FLS read access
+// decision.getRemovedFields() shows what was stripped
+```
+
+### `WITH SECURITY_ENFORCED` — throws on violation
+```apex
+List<Account> accounts = [
+    SELECT Id, Name, AnnualRevenue
+    FROM Account
+    WHERE Industry = 'Technology'
+    WITH SECURITY_ENFORCED
+];
+// Throws QueryException if user lacks read on any selected field
+```
+
+### Describe checks — manual / dynamic
+```apex
+if (Schema.sObjectType.Account.fields.AnnualRevenue.isAccessible()) {
+    // safe to query/return AnnualRevenue
+}
+
+// For dynamic SOQL — validate every field the caller asked for:
+for (String fieldName : requestedFields) {
+    Schema.SObjectField field = Account.SObjectType.getDescribe().fields.getMap().get(fieldName);
+    if (field == null || !field.getDescribe().isAccessible()) {
+        throw new SecurityException('Field not accessible: ' + fieldName);
+    }
+}
 ```
 
 ### Sharing keywords — ALWAYS declare explicitly
@@ -488,4 +567,319 @@ Contract c = new Contract(AccountId = acc.Id, StartDate = Date.today(), EndDate 
 // CORRECT — use ContractTerm (months) and StartDate
 Contract c = new Contract(AccountId = acc.Id, StartDate = Date.today(), ContractTerm = 12, Status = 'Draft');
 ```
+
+## Test data factories
+
+Tests should create their own data — never depend on existing records, real usernames, customer record names, profile names, role IDs, or anything else that varies by org.
+
+### Factory rules
+- **Required fields only.** Populate the fields the scenario needs, plus required fields. Leave optional fields blank in at least one test so you cover the empty-state path.
+- **Stable but unique values.** `'Test Account ' + i`, not `'Acme'`. Two tests running back-to-back must not collide on a unique field.
+- **No real org state.** No customer names, real emails, real Salesforce User IDs, real Profile names. Tests have to pass on someone else's sandbox.
+- **No `@IsTest(SeeAllData=true)`.** The only valid use is testing against standard Pricebook in a context where `Test.getStandardPricebookId()` doesn't satisfy the requirement — and even then, document why.
+- **Inspect validation rules and required fields first.** Required-field failures in tests are usually test-data failures, not product failures. Before writing a factory, query the object's validation rules and required fields.
+
+### Factory pattern
+```apex
+@IsTest
+public class TestDataFactory {
+    public static List<Account> createAccounts(Integer count) {
+        List<Account> accounts = new List<Account>();
+        for (Integer i = 0; i < count; i++) {
+            accounts.add(new Account(
+                Name = 'Test Account ' + i,
+                BillingCountry = 'United States'  // satisfies a hypothetical validation rule
+            ));
+        }
+        insert accounts;
+        return accounts;
+    }
+
+    public static User createTestUser(String profileName) {
+        Profile p = [SELECT Id FROM Profile WHERE Name = :profileName LIMIT 1];
+        return new User(
+            ProfileId = p.Id,
+            LastName = 'TestUser',
+            Email = 'test-' + DateTime.now().getTime() + '@example.com.invalid',
+            Username = 'test-' + DateTime.now().getTime() + '@example.com.invalid',
+            Alias = 'tuser',
+            CommunityNickname = 'tuser' + DateTime.now().getTime(),
+            TimeZoneSidKey = 'America/Los_Angeles',
+            LocaleSidKey = 'en_US',
+            EmailEncodingKey = 'UTF-8',
+            LanguageLocaleKey = 'en_US'
+        );
+    }
+}
+```
+
+### Anti-patterns
+```apex
+// BAD — depends on existing data
+List<User> existingUsers = [SELECT Id FROM User WHERE Name = 'Sarah Smith' LIMIT 1];
+
+// BAD — collision on unique fields between test runs
+Account a = new Account(Name = 'Acme');
+
+// BAD — relies on standard org Profile names that vary by org type/edition
+Profile p = [SELECT Id FROM Profile WHERE Name = 'Custom: Sales Profile'];
+
+// BAD — uses production data
+Account a = [SELECT Id FROM Account WHERE Name = 'Acme Corp'];
+```
+
+## Assertion discipline — test the contract, not the implementation
+
+The point of a test is to prove behavior. Coverage is a side effect. A test that runs every line but asserts nothing meaningful is not a test.
+
+### What good assertions check
+- Records were inserted, updated, deleted, or **left unchanged** as intended (negative-space assertions matter)
+- Errors thrown for invalid input — assert both the type and the message
+- Async work produced the expected **durable result** (record state, log entry, status field) — not internal call counts
+- Callouts were mocked correctly — assert what the production code did with the mocked response, not that the mock was set up
+- Sharing or permission behavior is enforced when relevant (use `System.runAs()`)
+- **No unintended records were changed** — query the rest of the test data and assert it's unchanged
+
+### Don't weaken assertions to make tests pass
+```apex
+// BAD — asserts nothing
+Assert.isTrue(true, 'placeholder');
+
+// BAD — runs the code but doesn't check behavior
+Test.startTest();
+service.process(records);
+Test.stopTest();
+// (no assertions)
+
+// BAD — asserts implementation detail that will break on refactor
+Assert.areEqual(3, service.queryCount, 'expected 3 queries');
+
+// GOOD — asserts the contract
+Test.startTest();
+service.process(records);
+Test.stopTest();
+List<Opportunity> updated = [SELECT Id, StageName FROM Opportunity WHERE Id IN :records];
+for (Opportunity o : updated) {
+    Assert.areEqual('Closed Won', o.StageName, 'process() should close all opportunities');
+}
+```
+
+### Test the changed contract, not stale literals
+When a behavior change is intentional, the tests for that behavior must change too. If the contract is now "advance only when payment confirmed," the test asserts the new contract — don't keep the old `'Stage 3'` literal because it used to pass.
+
+Common new-contract assertions:
+- "no unsafe advancement" — record stage unchanged
+- "retry date set" — `RetryAt__c` populated
+- "duplicate blocked" — count remained at 1
+- "optional integration skipped safely" — log entry exists, no exception thrown
+- "source-of-truth field wins" — the authoritative field overrides the stale value
+- "existing populated values preserved" — the update didn't blank out previously set fields
+
+## Batch test scope limit — one executeBatch per test
+
+Apex enforces **one batch execution scope** per test method. If your test data creates two qualifying chunks and the batch size is one, the test fails with:
+
+```
+No more than one executeBatch can be called from within a test method
+```
+
+### Fix patterns
+```apex
+@IsTest
+static void testBatchProcess() {
+    // Insert exactly one batch's worth of test data, OR
+    // use a batch size large enough that all test data fits in one execute scope.
+
+    // GOOD — 5 records, batch size 200: all fit in one scope
+    List<Account> accounts = TestDataFactory.createAccounts(5);
+
+    Test.startTest();
+    Database.executeBatch(new MyBatch(), 200);
+    Test.stopTest();
+
+    // Assert durable result
+    List<Account> updated = [SELECT Id, Status__c FROM Account WHERE Id IN :accounts];
+    for (Account a : updated) {
+        Assert.areEqual('Processed', a.Status__c, 'all accounts should be processed');
+    }
+}
+```
+
+### When you need multiple scopes
+Split into separate test methods. Each `@IsTest static void` method gets its own batch scope budget.
+
+## Callout mocking — every path needs a mock
+
+Tests cannot make real HTTP callouts. Salesforce throws `CalloutException`. Every callout path needs a mock — including the failure paths.
+
+### Mock every path the production code handles
+- **Success** — the happy path, parsed response, downstream side effect
+- **Auth failure** (401, 403) — token expired, refresh attempted, error logged
+- **Missing config** — Named Credential not set, secret missing, callout skipped with diagnostic
+- **Provider-specific failures** — rate limit (429), validation error (400 with structured body), 5xx server error
+- **Timeout** — production code's retry / fallback behavior
+
+### Pattern: HttpCalloutMock
+```apex
+@IsTest
+private class IntegrationServiceTest {
+
+    @IsTest
+    static void testCallout_success() {
+        Test.setMock(HttpCalloutMock.class, new SuccessMock());
+        Test.startTest();
+        IntegrationResult r = IntegrationService.fetchData('account-123');
+        Test.stopTest();
+        Assert.isTrue(r.success, 'should succeed on 200');
+        Assert.areEqual('expected-value', r.data, 'should parse response correctly');
+    }
+
+    @IsTest
+    static void testCallout_authFailure() {
+        Test.setMock(HttpCalloutMock.class, new AuthFailMock());
+        Test.startTest();
+        IntegrationResult r = IntegrationService.fetchData('account-123');
+        Test.stopTest();
+        Assert.isFalse(r.success, 'should fail on 401');
+        Assert.areEqual('AUTH_FAILED', r.errorCategory, 'should categorize as auth failure');
+    }
+
+    @IsTest
+    static void testCallout_missingConfig() {
+        // No mock needed — test the production code's handling of missing Named Credential
+        Test.startTest();
+        try {
+            IntegrationService.fetchData(null);
+            Assert.fail('should have thrown ConfigurationException');
+        } catch (ConfigurationException e) {
+            Assert.isTrue(e.getMessage().contains('Named Credential'), 'message should reference config');
+        }
+        Test.stopTest();
+    }
+
+    private class SuccessMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest req) {
+            HttpResponse res = new HttpResponse();
+            res.setStatusCode(200);
+            res.setBody('{"data":"expected-value"}');
+            return res;
+        }
+    }
+
+    private class AuthFailMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest req) {
+            HttpResponse res = new HttpResponse();
+            res.setStatusCode(401);
+            res.setBody('{"error":"token_expired"}');
+            return res;
+        }
+    }
+}
+```
+
+### Callouts after DML
+Synchronous DML followed by a callout in the same transaction throws `CalloutException`. Either:
+- Move the callout into a `@future(callout=true)` or `Queueable implements Database.AllowsCallouts`
+- Move the DML after the callout
+- Use `Test.startTest()` / `Test.stopTest()` to defer the callout in tests when production uses async
+
+## File tests — fragile, plan accordingly
+
+Salesforce Files (`ContentVersion`, `ContentDocument`, `ContentDocumentLink`) tests are common sources of flakiness.
+
+### Why they're fragile
+- **`ContentVersion` inserts can cause row locks** under broad parallel test runs — multiple tests inserting versions to the same parent record contend
+- **`ContentDocumentLink` is event-driven** — creating one fires triggers, validation rules, and Flows that may not be idempotent
+- **Latest-version logic** matters — `ContentDocument.LatestPublishedVersionId` references a specific version, not "the most recent insert"
+- **`@IsTest(isParallel=false)`** is a sledgehammer — every test marked this way slows the suite. Use it only when row locks make parallel execution unreliable.
+
+### File lifecycle test pattern
+```apex
+@IsTest
+static void testFileAttachedToAccount() {
+    Account acc = TestDataFactory.createAccounts(1)[0];
+
+    Test.startTest();
+
+    // Insert ContentVersion
+    ContentVersion cv = new ContentVersion(
+        Title = 'Test File',
+        PathOnClient = 'test.pdf',
+        VersionData = Blob.valueOf('test content'),
+        IsMajorVersion = true
+    );
+    insert cv;
+
+    // Query the resulting ContentDocumentId
+    cv = [SELECT Id, ContentDocumentId FROM ContentVersion WHERE Id = :cv.Id];
+    Assert.isNotNull(cv.ContentDocumentId, 'ContentDocumentId should be set after insert');
+
+    // Link to the parent record
+    ContentDocumentLink cdl = new ContentDocumentLink(
+        ContentDocumentId = cv.ContentDocumentId,
+        LinkedEntityId = acc.Id,
+        ShareType = 'V',
+        Visibility = 'AllUsers'
+    );
+    insert cdl;
+
+    Test.stopTest();
+
+    // Assert the link exists and points at the latest version
+    List<ContentDocumentLink> links = [
+        SELECT Id, ContentDocument.LatestPublishedVersionId
+        FROM ContentDocumentLink
+        WHERE LinkedEntityId = :acc.Id
+    ];
+    Assert.areEqual(1, links.size(), 'one link should exist');
+    Assert.areEqual(cv.Id, links[0].ContentDocument.LatestPublishedVersionId,
+        'link should reference the latest version');
+}
+```
+
+### What to assert in file tests
+- Insert succeeded and `ContentDocumentId` came back
+- Link to the parent record was created (or already existed and wasn't duplicated)
+- Latest-version reference points at the right version
+- Parent record state refreshed if production code recomputes counts/rollups
+- No-file path — the production code handles "no files attached" gracefully
+- Missing-link path — production code handles "file exists but link to this user/record missing"
+
+## Communication automation tests — duplicates and idempotency
+
+For email, Chatter posts, activity creation, notifications, and generated-document side effects, test:
+
+- **Missing template / configuration** — production code logs and skips, doesn't crash
+- **Missing merge data** — empty fields, null relationships, default fallbacks
+- **Duplicate retry prevention** — same operation called twice produces one side effect, not two. Assert via an idempotency key, status field, or count.
+- **Async completion** — wrap in `Test.startTest()` / `Test.stopTest()` and assert durable result
+- **Denied or missing target record access** — `System.runAs()` a user without access, verify safe failure
+
+### Don't assert exact private-facing message text
+- Production message bodies often contain customer data — keep them out of test asserts that may be read by anyone with repo access.
+- Assert structure (subject contains, recipient list size, action recorded, idempotency key set), not exact body content.
+
+### Pattern: idempotency assertion
+```apex
+@IsTest
+static void testEmailNotSentTwiceOnRetry() {
+    Account acc = TestDataFactory.createAccounts(1)[0];
+
+    Test.startTest();
+    NotificationService.sendOnboardingEmail(acc.Id);
+    NotificationService.sendOnboardingEmail(acc.Id);  // retry / duplicate call
+    Test.stopTest();
+
+    // Assert exactly one email log entry exists
+    List<Email_Log__c> logs = [SELECT Id FROM Email_Log__c WHERE Account__c = :acc.Id];
+    Assert.areEqual(1, logs.size(), 'duplicate call should not create a second email log');
+}
+```
+
+## Coverage strategy
+
+- **Add branch coverage for validation and error paths** in classes you're deploying. Coverage gates apply to changed classes specifically.
+- **Prefer focused subsystem tests** over broad unrelated tests for a narrow production deploy. Don't pull in legacy classes that fail for unrelated reasons.
+- **Don't chase high org-wide coverage** through risky broad refactors in a hotfix. Org-wide coverage and per-class coverage on a deploy package are different metrics.
+- **Coverage is necessary, not sufficient.** A class can have 100% coverage and still be wrong. Prioritize assertion quality over coverage percentage.
 

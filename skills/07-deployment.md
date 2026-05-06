@@ -1,14 +1,42 @@
 # Deployment
 
+## How ForceClaw deploys (read first)
+
+ForceClaw's job ends at **validation**. The user does the actual production deploy.
+
+The only production-touching tool is `validate_deploy_to_production`, which retrieves metadata from the connected sandbox, runs Metadata API `deploy()` with `checkOnly: true` against production, and returns the validation Deploy ID. The user then Quick Deploys from Salesforce Setup > Deployment Status. ForceClaw never promotes a change to production itself.
+
+This is a load-bearing rule, not a default. Even if the user says "go ahead and deploy it," reply that the bot validates and they Quick Deploy.
+
 ## Current capabilities
 
-- Deploy individual metadata components (Flows, Apex, Custom Objects/Fields, Permission Sets, Validation Rules)
-- Activate/deactivate Flows
-- Create and manage Change Sets
+- **Sandbox edits** — create/update flows, Apex, custom objects/fields, permission sets, validation rules, page layouts, etc. against a connected sandbox via the Metadata, Tooling, and REST APIs
+- **Validate-only deploy from sandbox to production** — `validate_deploy_to_production` retrieves the specified metadata from sandbox and runs `checkOnly: true` deploy against production
+- **Activate/deactivate Flows**
+
+## Evidence hierarchy — what counts as "it worked"
+
+When reporting an outcome to the user, use the **highest level of evidence actually reached** — never one above. Each level is stronger than the one below it.
+
+| Level | What proves it | What it does NOT prove |
+|---|---|---|
+| 1. Source review | The generated XML/Apex/JSON parses and looks correct | Nothing about org state |
+| 2. Compile pass | Apex compiled in the org (Tooling API save returned success) | Nothing about runtime, FLS, or other components |
+| 3. Targeted tests pass | Specified Apex tests ran green with sufficient coverage on the touched classes | Nothing about deployability of the broader package |
+| 4. Validate-only deploy pass | Metadata API `deploy()` with `checkOnly: true` returned success against the target org | The change is **not live** — the user still must Quick Deploy |
+
+### Rules of evidence
+
+- ForceClaw's ceiling is level 4. Slack summaries say *"validated successfully — Quick Deploy from Setup > Deployment Status"*. Never *"deployed"*, *"live"*, or *"shipped"*.
+- A success that ignored warnings is a **risk state**, not a clean pass. List the warnings in the Slack summary.
+- A `checkDeployStatus` poll timeout is **neither** success nor failure. Surface the Deploy ID and ask the user to check Setup > Deployment Status — do not claim either outcome.
+- Compile pass on a single Apex class is not validate-only pass on a deploy package. Don't conflate the two.
+- Heroku server logs get the full SOAP envelopes, error stacks, and raw XML. The Slack thread gets the human summary. Never leak SOAP/internals into user-facing messages.
+- Never claim something "isn't deployed yet" without first checking `git status`. Recent ForceClaw changes are usually already live on Heroku.
 
 ## Deployment ordering — CRITICAL
 
-When deploying multiple components, they MUST be deployed in this order. Deploying out of order causes `INVALID_CROSS_REFERENCE_KEY`, `FIELD_NOT_FOUND`, and similar errors.
+When deploying multiple components, they MUST be in this order. Out-of-order deploys cause `INVALID_CROSS_REFERENCE_KEY`, `FIELD_NOT_FOUND`, and similar errors.
 
 ### Standard deployment order
 ```
@@ -30,55 +58,47 @@ When deploying multiple components, they MUST be deployed in this order. Deployi
 | Subflows | Child subflows must be deployed AND activated before parent flows |
 | Validation Rules | Referenced fields must exist |
 
-## Pre-deployment checklist
+## Pre-validation checklist
 
-### Before any deployment
-- [ ] **Run all tests** — verify 75% minimum code coverage (90%+ recommended)
-- [ ] **Check for hardcoded IDs** — these break between orgs/sandboxes
-- [ ] **Verify code coverage** — check with `SELECT ApexClass.Name, NumLinesCovered, NumLinesUncovered FROM ApexCodeCoverage`
-- [ ] **Validate against target org** — use validation-only deployment to catch errors before committing
-- [ ] **Check entry conditions on Flows** — ensure record-triggered flows have proper filters
-- [ ] **Verify FLS on new fields** — new fields are hidden by default; confirm permission sets are included in the deployment
-
-### Deployment validation
-Always do a dry-run first:
-- Deploy as **validation only** (check-only deployment) to verify everything compiles and tests pass in the target org
-- Review the validation results for errors
-- Only proceed with the actual deployment after validation passes
+### Before any production validation
+- [ ] **Identify the touched Apex classes** — coverage is gated on touched classes, not org-wide
+- [ ] **Ask the user which test classes to run** — never default to `RunLocalTests`. Use `RunSpecifiedTests` with classes that actually cover the change. `validate_deploy_to_production` defaults to `NoTestRun`, which production policy may reject — be ready to retry with tests.
+- [ ] **Check for hardcoded IDs** — surface as a warning even if the validation passes (they break between orgs)
+- [ ] **Verify FLS on new fields** — new fields are hidden by default; include the relevant permission sets in the package
+- [ ] **Keep the package narrow** — only what changed. Broad packages cause unrelated failures and slower validations
+- [ ] **For destructive changes** — validate-only first, list what's being removed in the Slack summary, confirm a rollback plan with the user before any Quick Deploy
 
 ## Common deployment errors and fixes
 
-| Error | Cause | Fix |
+| Error / Symptom | Likely Cause | Fix |
 |---|---|---|
-| `FIELD_CUSTOM_VALIDATION_EXCEPTION` | Validation rule blocking the test data | Create test data that satisfies all validation rules, or temporarily deactivate the rule |
+| `FIELD_CUSTOM_VALIDATION_EXCEPTION` | Validation rule blocks the test data | Create test data that satisfies all validation rules, or temporarily deactivate the rule |
 | `INVALID_CROSS_REFERENCE_KEY` | Reference to a component that doesn't exist in the target org | Check deployment order — deploy dependencies first |
 | `CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY` | Trigger/Flow error during test execution | Check debug logs for the specific trigger/flow that failed |
-| `Test coverage < 75%` | Insufficient Apex test coverage | Write more tests or fix failing tests |
-| `Field does not exist` | Apex references a field not in the target org | Include the custom field in the deployment |
+| `Test coverage < 75%` | Insufficient Apex coverage on touched classes | Add tests for the modified classes — coverage is gated per touched class, not org-wide |
+| `Field does not exist` | Apex references a field not in the target org | Include the custom field in the package |
 | `Invalid type` | Apex references a class that doesn't exist yet | Deploy the referenced class first |
-| `Insufficient access` | Missing permissions for the deploying user | Verify the user has Modify All Data or deploy permissions |
+| `Insufficient access` | Missing permissions for the integration user | Verify the integration user has Modify All Data and the relevant deploy permissions |
 | `Subflow not found` | Parent flow references a subflow that isn't deployed/active | Deploy and activate subflows before parent flows |
+| Production rejects `NoTestRun` | Production org policy requires tests even on metadata-only changes | Re-run with `RunSpecifiedTests`. Ask the user which test classes cover the change. |
+| Validation succeeded but the change isn't live | Validate-only ≠ deployed. The user hasn't Quick-Deployed yet | Tell the user to Quick Deploy from Setup > Deployment Status using the Deploy ID. ForceClaw never promotes the change itself. |
+| Selected tests pass but validation fails on coverage | One or more touched Apex classes are below the per-class coverage threshold | Add branch and negative-path tests for the touched classes; don't rely on overall org coverage |
+| `checkDeployStatus` poll timed out | Validation job is still running on the org | Surface the Deploy ID; do not claim success or failure; ask the user to monitor Setup > Deployment Status |
+| Validation includes unrelated metadata | Retrieve scope was too broad | Narrow the retrieve manifest to the components actually being modified |
+| Destructive change validated "with warnings" | Warnings on a destructive deploy were not surfaced | Treat as a risk state — list the warnings in the Slack summary, do not call it a clean pass |
+| Destructive deploy would remove the wrong metadata | Destructive manifest or dependencies were not reviewed narrowly | Use a separate destructive manifest, validate-only first, document the rollback plan with the user before Quick Deploy |
+| `UNABLE_TO_LOCK_ROW` during test execution | Parallel tests contending on the same records (often `ContentVersion` or shared setup data) | Narrow the test scope; for stubborn cases mark `@isTest(isParallel=false)` |
+| `Too many SOQL queries: 101` in an unrelated test | Test selection is too broad and pulls in legacy classes | Narrow tests to those that actually cover the changed classes; treat the legacy SOQL issue as a separate ticket |
 
-## Deployment methods
+## Deployment method
 
-### Metadata API (what the bot uses)
-- Deploys individual components via API calls
-- Best for: single-component changes, automated deployments
-- Used by: `create_flow`, `create_custom_field`, `create_permission_set`, etc.
+ForceClaw uses the **Metadata API SOAP endpoint** for retrieves and validations:
 
-### Change Sets
-- Salesforce-native deployment between connected orgs (sandbox → production)
-- Best for: admin-friendly deployments, organizations without CI/CD
-- Limitation: one-way, can't delete components, no version control
+- Retrieve: `${instanceUrl}/services/Soap/m/<apiVersion>` with `SOAPAction: "retrieve"`, polled via `checkRetrieveStatus`
+- Validate: same endpoint with `SOAPAction: "deploy"` and `<checkOnly>true</checkOnly>`, polled via `checkDeployStatus`
+- `singlePackage: false` because retrieve zips put files under `unpackaged/`
 
-### Salesforce CLI (`sf project deploy start`)
-- Command-line deployment from local source
-- Best for: developer workflows, CI/CD pipelines
-- Supports: source format, manifest-based deploys, selective deploys
-
-### Unlocked/Managed Packages
-- Best for: distributing to multiple orgs, ISV products
-- Supports: versioning, dependency management, upgrade paths
+Sandbox edits go through the Tooling API or component-specific Metadata API calls (e.g., `update_flow` deploys a Flow XML zip directly to the sandbox). The validate-only path is reserved for the sandbox → production handoff.
 
 ## Rollback strategies
 
@@ -103,10 +123,10 @@ Always do a dry-run first:
 
 ## Deployment best practices
 
-1. **Deploy to sandbox first, then production** — never deploy untested changes directly to production
-2. **Use validation-only deployments** to verify before committing
-3. **Deploy in small batches** — easier to identify and fix issues
-4. **Include test data setup in your test classes** — don't rely on existing data in the target org
-5. **Document what's being deployed** — maintain a deployment log for audit trail
-6. **Time production deployments carefully** — avoid peak usage hours
-7. **Have a rollback plan** before every production deployment
+1. **Build in sandbox, validate against production** — never validate untested changes against production
+2. **Keep the package narrow** — only what changed. Broad packages cause unrelated failures and slower validation
+3. **Use `RunSpecifiedTests`, not `RunLocalTests`** — ask the user which test classes cover the change
+4. **Document what's validated** — every job already commits to Git with a descriptive message; reinforce that in the Slack summary along with the Deploy ID
+5. **Time production validations carefully** — heavy validation traffic during peak hours can interfere with org performance
+6. **Confirm a rollback plan** before the user Quick Deploys to production, especially for destructive changes
+7. **Report only the evidence you have** — if the validation timed out, say so. If warnings were ignored, say so. Match the Slack summary to the highest evidence level reached, never above.
