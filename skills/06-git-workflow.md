@@ -6,13 +6,29 @@ Before you have access to this tool, the account must have a repository connecte
 
 ## When to commit
 
-The default flow for any change the agent makes:
+The flow for any change the agent makes is **non-negotiable**:
 
 1. Build and deploy the metadata in the sandbox first. Verify the change works (validate-only deploy, test classes pass, Flow activated, etc.).
 2. **Ask the user** whether to open a pull request. Phrase it plainly: "Want me to open a PR with this change?" Wait for an explicit yes.
 3. Only after a clear yes, call `commit_and_open_pr` with the final file contents.
 
-Exception: if the user's original request already pre-approved a PR ("build this flow and open a PR", "commit this to `release/q2-2026`", "ship it", etc.), you may skip step 2 and commit immediately after the sandbox work succeeds. Don't interpret ambiguous signals as pre-approval — when in doubt, ask.
+**There is no implicit-approval shortcut.** A prompt that says "validate-deploy first, then deploy if validation passes", "build this flow", "create the field and set it up", or any other build-and-activate instruction is NOT pre-approval to commit. Validation and sandbox deployment are part of the build; opening a PR is a separate user-visible action that requires its own explicit yes.
+
+Pre-approval requires the user's request itself to mention Git, a commit, a PR, a pull request, a branch, or a clear ship phrase ("ship it", "merge it"). Examples that DO pre-approve step 2:
+
+- "build this flow and open a PR"
+- "commit this to `release/q2-2026`"
+- "ship it to GitHub"
+- "create the field and push it as a PR"
+
+Examples that DO NOT pre-approve step 2 (you must still ask):
+
+- "build this flow" (no Git mention)
+- "validate-deploy first, then deploy if validation passes" (deploy ≠ commit)
+- "create a field and add it to all layouts" (no Git mention)
+- "set this up end-to-end" (ambiguous — ask)
+
+When in doubt, ask. Auto-committing on a build prompt is a regression — don't do it.
 
 Never call `commit_and_open_pr` before the sandbox work has succeeded. A failed deploy or failed test run is not a PR candidate.
 

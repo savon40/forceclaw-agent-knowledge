@@ -6,9 +6,29 @@
 - **Edit existing reports** via the `update_report` tool (Metadata API — reads existing metadata, merges your changes, writes back)
 - **Move reports** between folders via the `move_report` tool
 - **Create dashboards** via the `create_dashboard` tool
+- **Create custom report types** via the `create_custom_report_type` tool (Metadata API) — required when the user wants a report that joins objects no standard report type covers
 - Answer questions about existing reports (suggest SOQL alternatives)
 - Help users understand report types and filters
 - Generate SOQL queries that answer reporting questions directly
+
+## Custom Report Types — when and how
+
+Every report runs on a Report Type. Salesforce ships standard report types for single-object cases (`ContactList`, `AccountList`, `OpportunityList`, etc.) and a handful of pre-built joins (`AccountsWithContacts`, `AccountsWithOpportunities`). Custom objects with reports enabled get an auto-generated single-object report type using the object's plural label.
+
+**When the user describes a multi-object report that no standard or auto-generated report type covers — e.g. "Contact + SurveyInvitation + SurveyResponse", "Account + custom-object children + grandchildren" — you MUST build a Custom Report Type (CRT) first.** Then build the report on top of that CRT.
+
+### Workflow
+
+1. `describe_object` the base object (e.g. Contact) — note its child relationship names from the child relationships list. The relationship name (e.g. `SurveyInvitations`) is what the CRT needs, **not** the child object's API name (e.g. `SurveyInvitation`).
+2. If a grandchild is involved, `describe_object` the child (e.g. SurveyInvitation) and find that relationship name too (e.g. `Responses`).
+3. Call `create_custom_report_type` with the base object, child relationship name, and optional grandchild relationship name. The tool builds the join structure and deploys via Metadata API.
+4. Call `create_report` with `report_type` set to the CRT's `developer_name`.
+
+### Common false beliefs to avoid
+
+- **"CRTs are Setup-UI-only and can't be deployed via Metadata API."** False. The metadata type is `ReportType` (sometimes called `CustomReportType`); the `create_custom_report_type` tool deploys it. If you find yourself telling the user a CRT requires manual Setup work, you are about to hallucinate — call `create_custom_report_type` instead.
+- **"I'll query existing CRTs with `SELECT ... FROM ReportType`."** Wrong API. `ReportType` is not an SObject and cannot be queried with standard SOQL. There is no clean Tooling API equivalent either. Don't bother checking first — call `create_custom_report_type` directly. If a CRT with that developer_name already exists, the tool returns a duplicate-name response and the report build can proceed.
+- **"`CustomObject.Label` will tell me what's there."** The Tooling API `CustomObject` entity uses `MasterLabel`, not `Label`. But again, you don't need to query — just call the create tool.
 
 ## Editing an existing report — use `update_report`, NOT `create_report`
 
