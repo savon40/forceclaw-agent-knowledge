@@ -433,6 +433,24 @@ Use the `list_objects` tool. To filter to custom objects only, look for API name
 
 Required fields (fields created with `required: true`, like a required custom text field, a Master-Detail field, or a system field) behave differently from optional fields in a few ways that trip up automation. Knowing these saves wasted tool calls.
 
+### Do NOT mark fields as required by default
+
+When the user describes a new field, **default to `required: false` unless they explicitly say the field must be filled in.** Phrases that mean required:
+- "this is mandatory"
+- "users have to fill this in"
+- "can't be blank"
+- "required"
+- "every record needs a value for this"
+
+Phrases that DO NOT mean required, even when they sound restrictive:
+- "department (engineering, sales, marketing)" → a picklist with values, NOT a required field
+- "status: draft, open, closed" → a picklist with values, NOT a required field
+- "an email address" → an Email field, NOT a required Email field
+- "the candidate's first name" → a Text field, NOT a required Text field
+- A list of allowed values is a constraint on the value SET, not a requirement that a value be present.
+
+Once a field is required, you cannot grant or remove field-level security on it (it's auto-readable/editable for anyone with object access), and Salesforce auto-places it on every page layout. Marking a field as required when the user didn't ask creates downstream friction (FLS calls that fail/short-circuit, page layout calls that reject). When in doubt, ask the user explicitly: "should the X field be required (every record must have a value), or optional?"
+
 ### Required fields are auto-placed on every page layout
 Salesforce automatically places required fields on every page layout in a dedicated required-fields section. **You cannot add them to additional sections** — Salesforce will reject the layout update with:
 ```
@@ -443,11 +461,21 @@ When using `update_page_layout` with `action: "add_section"` or `action: "add"`,
 
 If you're not sure whether a field is required, call `describe_object` and check `fields[].nillable` — `nillable: false` AND `defaultedOnCreate: false` means the field is required and will be auto-placed.
 
-### FLS is a no-op on required fields
-Required fields are always readable and editable for any user with object access — there is no FLS to set. The `set_field_level_security` tool detects this case and short-circuits with a success message like:
+### FLS is a no-op on required fields AND system audit fields
+Two categories of field never need FLS:
+1. **Required fields** — always readable/editable for any user with object access.
+2. **System audit fields** — `Id`, `OwnerId`, `CreatedDate`, `CreatedById`, `LastModifiedDate`, `LastModifiedById`, `SystemModstamp`, `IsDeleted`, `LastActivityDate`, `LastViewedDate`, `LastReferencedDate`. These are Salesforce-managed and inherit visibility from object permissions.
+
+Both `set_field_level_security` and `update_permission_set_field_permissions` short-circuit on these with messages like:
 > Skipped — `Object.Field__c` is a required field, so field-level security is automatically enforced for all profiles…
 
-This is normal and expected. **Do not interpret it as an error** — there is genuinely nothing to do at the FLS layer. If the user wants the field to be optional (so FLS becomes meaningful), call `update_custom_field` with `required: false` first, then set FLS.
+or
+
+> Skipped — `Object.LastModifiedDate` cannot have field-level security set on it on permission set "X". This is either a system audit field … or a schema-required custom field.
+
+This is normal and expected. **Do not interpret skip messages as errors** — there is genuinely nothing to do at the FLS layer. Continue with the remaining fields. If the user wants a required field to be optional (so FLS becomes meaningful), call `update_custom_field` with `required: false` first, then set FLS.
+
+When the user asks for "edit access to all fields" on an object, only iterate the user-creatable, non-required fields (you can read `createable`, `updateable`, `nillable`, and `defaultedOnCreate` off `describe_object`) — skip system audit fields entirely. The tools will skip-and-continue for you if you don't, but enumerating only the eligible fields is cleaner and faster.
 
 ### Workflow: creating a required field on a new object
 The common pattern that hits both gotchas at once is: "create object → create required field → set FLS for profiles → add field to a section on the page layout." Here's the right order:
