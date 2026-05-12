@@ -148,14 +148,19 @@ Query existing tabs: `SELECT Id, Name, SobjectName FROM CustomTab WHERE SobjectN
 
 ### 2. Tab visibility (ALWAYS ask)
 After creating the tab, ask:
-> "Which profiles should have access to this tab? I can set it to **Default On** (visible), **Default Off** (available but hidden), or **Tab Hidden** for specific profiles."
+> "Which profiles or permission sets should have access to this tab? I can set it to **Default On** (visible), **Default Off** (available but hidden), or **Tab Hidden**."
 
 Options to offer:
 - **Default On for All Profiles** — everyone sees it in the navigation
 - **Default On for specific profiles** — ask which ones
+- **Default On via a permission set** — when access is granted via assignment (e.g. "Recruiter" perm set) rather than profile
 - **Default Off** — available but users need to add it themselves
 
-Use profile tab visibility settings to apply. Note: System Administrator profile always gets Default On automatically.
+Apply via:
+- `update_profile_tab_visibility` — when granting via profiles
+- `update_permission_set_tab_visibility` — when granting via a permission set
+
+Permission sets **DO** control tab visibility (via the PermissionSet `tabSettings` field — the same "Available / Visible" checkboxes you see in the Tab Settings section of a permission set in Setup). Never tell the user that tab visibility is profile-only. System Administrator profile gets Default On automatically.
 
 ### 3. App assignment (ask when relevant)
 > "Should I add this tab to any Lightning apps? If so, which app?"
@@ -481,7 +486,7 @@ When presenting a plan for a new custom object, your plan must ALWAYS include ob
 2. **Field-Level Security** — use `set_field_level_security` with `profiles: ["All Profiles"]` or specific profiles. Batches in a single tool call — do NOT loop one profile at a time.
 3. **Page Layout** — add the new fields via `update_page_layout`. Note: Salesforce auto-adds `required` fields to the default layout; excluding them from your `add_section` call avoids a "field appears more than once" error.
 4. **Custom Tab** — create via `create_custom_tab`.
-5. **Tab Visibility** — use `update_profile_tab_visibility` with `profiles: ["All Profiles"]` or a specific array. This tool batches across profiles in a single call — do NOT call it once per profile (it's dramatically slower and costs more tokens).
+5. **Tab Visibility** — use `update_profile_tab_visibility` with `profiles: ["All Profiles"]` or a specific array when granting via profiles. This tool batches across profiles in a single call — do NOT call it once per profile (it's dramatically slower and costs more tokens). When granting tab access via a permission set instead, use `update_permission_set_tab_visibility` (one call per permission set; permission sets DO control tab visibility via their `tabSettings` field, despite what the Salesforce UI's profile-centric phrasing might suggest).
 
 Do NOT skip step 1. Tab visibility alone is the most common "I made the tab DefaultOn but users can't see it" failure mode.
 
