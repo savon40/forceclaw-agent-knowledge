@@ -5,10 +5,116 @@
 - List all active Flows in the org
 - Read full Flow definitions and metadata structure
 - **Create new Flows** using the **simplified flow_definition format** (preferred) — describe the trigger, steps, and resources. The tool builds valid Salesforce metadata automatically. No need to provide locationX/Y, connectors, processMetadataValues, or any boilerplate.
-- **Update existing Flows** — modify elements, add new logic, change conditions, add branches. Use `get_flow_definition` to read the current flow, modify the metadata, then save with `update_flow`. This works on active flows — the Metadata API creates a new version automatically. You do NOT need to deactivate a flow before updating it.
+- **Update existing Flows** — two tools, pick the right one (see "Editing existing flows" below).
 - Activate and deactivate existing Flows
 - Delete Flows (must be deactivated first)
 - Answer questions about what a Flow does based on its metadata
+
+---
+
+## Editing existing flows — `update_flow_patch` vs `update_flow`
+
+ForceClaw has TWO tools for changing an existing flow. Picking the right one is the difference between a one-call edit and a multi-turn iteration cycle that may eventually become impossible.
+
+### Decision rule
+
+1. **Run `get_flow_definition` first** to see the current size.
+2. If size **< 5K characters** AND you're rewriting most of the flow → use **`update_flow`**.
+3. **For ANY other change to an existing flow → use `update_flow_patch`.**
+
+That's it. The patch tool is the right answer for almost every realistic edit to an existing flow.
+
+### Why patch is the default
+
+- `update_flow` requires you to emit the COMPLETE flow metadata in one tool call. For a moderately complex flow that's 15-30K characters of output tokens. Above ~40K, the tool hard-rejects because the model's output budget can't reliably regenerate that much without truncation. **Flows do not get smaller** — every iteration adds elements, screens, fault paths. A flow worth iterating on will eventually become unmodifiable via `update_flow`.
+- `update_flow_patch` lets you emit just the changes — typically 200-2000 characters regardless of flow size. The server fetches the current metadata, applies the patches, sanitizes, and deploys. Works on flows of any size.
+
+### Patch operations reference
+
+Every patch is `{ op, ...args }`. Send a list of them in `patches: [...]`.
+
+**`set_field`** — set a value at a dot-separated path. Use this for ~80% of changes.
+- `path` — segments separated by `.`. Element collections (`screens`, `decisions`, `recordCreates`, etc.) resolve to elements **by their `name` field**, NOT by array index. Trailing segments are literal property names.
+- `value` — the new value (any JSON type).
+
+```json
+{ "op": "set_field", "path": "screens.Deal_Desk_Request_Screen.fields.IsRushed.isRequired", "value": true }
+{ "op": "set_field", "path": "decisions.Route_By_Type.rules.0.conditionLogic", "value": "and" }
+{ "op": "set_field", "path": "start.filterLogic", "value": "and" }
+```
+
+**`delete_field`** — remove a value at a path. Same path syntax.
+
+```json
+{ "op": "delete_field", "path": "screens.Foo.fields.OldField.errorMessage" }
+```
+
+**`add_element`** — add a new flow element. Requires `elementType` (one of: `screens`, `decisions`, `recordCreates`, `recordUpdates`, `recordLookups`, `assignments`, `loops`, `actionCalls`, `subflows`, `variables`, `formulas`, `constants`, `textTemplates`, `choices`, `waits`, `customErrors`, `collectionProcessors`) and `value` (the element object, with a unique `name`).
+
+```json
+{
+  "op": "add_element",
+  "elementType": "recordCreates",
+  "value": {
+    "name": "Create_Sec_Case",
+    "label": "Create Security Case",
+    "object": "Case",
+    "inputAssignments": [/* ... */]
+  }
+}
+```
+
+**`remove_element`** — remove an element by name (searches all collections).
+
+```json
+{ "op": "remove_element", "name": "Orphan_Test_Step" }
+```
+
+**`update_element`** — replace an entire element by name.
+
+```json
+{ "op": "update_element", "name": "Foo_Screen", "value": { "name": "Foo_Screen", /* full new element */ } }
+```
+
+**`set_connector`** — wire a node's connector to another node. The most common fix for orphan elements and "invalid element reference X not found for target" errors.
+- `fromElement` — the source node.
+- `targetReference` — the target node's name.
+- Add `rule: "RuleName"` to wire a specific decision rule's connector instead of the element's main connector.
+- Add `fault: true` to set the fault connector instead of the main connector.
+
+```json
+{ "op": "set_connector", "fromElement": "Route_By_Type", "rule": "Finance_Case", "targetReference": "Create_Finance_Case" }
+{ "op": "set_connector", "fromElement": "Get_Opportunity", "fault": true, "targetReference": "Send_Error_Email" }
+```
+
+**`set_metadata_field`** — set a top-level Flow metadata field (label, description, interviewLabel, status, etc.).
+
+```json
+{ "op": "set_metadata_field", "field": "label", "value": "Deal Desk Case Creation (v2)" }
+```
+
+### Atomicity
+
+If ANY patch in the list fails to apply, NO patches are deployed. The tool returns per-op errors with paths and the flow stays untouched. Fix the bad patches and retry the whole list.
+
+### Common patterns
+
+| Goal | Patch |
+|---|---|
+| Flip a screen field's `isRequired` on/off | `set_field` on `screens.X.fields.Y.isRequired` |
+| Fix a decision rule's conditionLogic | `set_field` on `decisions.X.rules.0.conditionLogic` |
+| Wire an orphan element to its upstream | `set_connector` with `fromElement` + `targetReference` |
+| Add a fault path to a recordCreate | `set_connector` with `fault: true` |
+| Add a new screen field | `set_field` on `screens.X.fields` with the full new fields array, OR `update_element` on the screen. |
+| Rename a flow | `set_metadata_field` with `field: "label"` |
+| Add a whole new branch (Decision → action chain) | Multiple `add_element` ops (one per new node) + `set_connector` ops to wire them in |
+
+### Path resolution edge cases
+
+- Element collections (`screens`, `decisions`, etc.) resolve segments by element `name` first, falling back to numeric index. **Prefer name-based paths** — they're stable across edits.
+- Nested named collections (`screens.MyScreen.fields.MyField`) follow the same rule.
+- Array positions without a name (`filters`, `conditions`, `assignmentItems`) use numeric indices: `recordLookups.Get_Cases.filters.0.operator`.
+- If a path can't resolve, the error tells you which segment failed and what's actually available at that level — fix the path and retry.
 
 ---
 
