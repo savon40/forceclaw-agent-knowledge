@@ -133,6 +133,63 @@ ORDER BY COUNT(Id) DESC
 LIMIT 50
 ```
 
+## SOQL gotchas — non-obvious restrictions
+
+These restrictions don't appear in standard SOQL references but Salesforce enforces them, and they each waste at least one tool call to discover. Read this list before constructing a SOQL query that uses `OR`, `LIKE`, or targets Tooling-only objects.
+
+### Mixed `LIKE` and `=` comparisons in an OR clause are rejected
+
+This fails specifically on `FieldDefinition` and `EntityDefinition`:
+
+```sql
+-- ❌ REJECTED — "The same comparison operation (LIKE or =) must be specified for all OR conditions"
+SELECT QualifiedApiName, Label
+FROM FieldDefinition
+WHERE EntityDefinition.QualifiedApiName = 'Account'
+  AND (QualifiedApiName LIKE '%Region%' OR QualifiedApiName = 'BillingCountry')
+```
+
+Two ways to fix:
+
+```sql
+-- ✅ Same comparison operator on both sides of OR
+SELECT QualifiedApiName, Label
+FROM FieldDefinition
+WHERE EntityDefinition.QualifiedApiName = 'Account'
+  AND (QualifiedApiName LIKE '%Region%' OR QualifiedApiName LIKE 'BillingCountry')
+```
+
+Or split into two separate queries and merge results client-side. ForceClaw's `query_salesforce` / `query_tooling` tools will surface this restriction in the error when triggered.
+
+### "Disjunctions not supported" on some compound fields
+
+A handful of compound and polymorphic fields reject `OR` clauses entirely. The error reads `Disjunctions not supported`. There's no in-query workaround — split into separate queries and merge client-side.
+
+### Tooling-only sObjects — use `query_tooling`, not `query_salesforce`
+
+These objects are ONLY queryable via the Tooling API. Calling `query_salesforce` on them returns the misleading Salesforce error `sObject type 'X' is not supported. If you are attempting to use a custom object, be sure to append the '__c' after the entity name.` That suggestion is wrong — the fix is to switch tools, not to append `__c`.
+
+| sObject | Use |
+|---|---|
+| `ApexClass`, `ApexTrigger`, `ApexCodeCoverage`, `ApexCodeCoverageAggregate`, `ApexTestResult` | `query_tooling` |
+| `Flow`, `FlowDefinition`, `FlowDefinitionView` | `query_tooling` (or `list_flows` / `get_flow_definition` for higher-level access) |
+| `Layout`, `PageLayout` | `query_tooling` (or `list_page_layouts` / `read_page_layout` for higher-level access) |
+| `CustomField`, `CustomObject`, `EntityDefinition`, `FieldDefinition` | `query_tooling` |
+| `ValidationRule`, `WorkflowRule`, `AssignmentRule` | `query_tooling` |
+| `LightningComponentBundle`, `LightningComponentResource` | `query_tooling` (or `list_lwc_bundles` / `get_lwc_source` for higher-level access) |
+| `CompactLayout`, `RecordType`, `Profile`, `PermissionSet`, `PermissionSetGroup` | `query_tooling` |
+| `EmailTemplate`, `Report`, `ReportFolder`, `Queue`, `QuickAction`, `FieldSet`, `RemoteSiteSetting`, `FlexiPage` | `query_tooling` |
+
+The `query_salesforce` tool will surface this redirection automatically when it sees the error pattern.
+
+### `FieldDefinition.ApiName` doesn't exist
+
+The column is `QualifiedApiName`, not `ApiName`. ForceClaw's "No such column" self-repair will suggest the correct name and let you retry — but knowing it in advance saves a turn.
+
+### Leading wildcards in `LIKE` defeat the index
+
+`WHERE Name LIKE '%foo'` cannot use the index and forces a full-table scan. Use trailing wildcards (`'foo%'`) when possible, or filter client-side after a more selective query.
+
 ## SOQL vs Tooling API — what lives where
 
 **This is critical. Using the wrong API wastes turns and causes errors.**
@@ -409,9 +466,13 @@ Only Case, Lead, and Opportunity ever have business processes — querying any o
 
 1. **Find or create a business process** — first query existing ones (recipe above). If one fits the user's needs, use its `Name` (which is the DeveloperName).
 2. **If you need a new business process,** check that all the Status (Case/Lead) or StageName (Opportunity) values you want to expose already exist on the picklist field. Use `describe_object` on the parent object and look at `fields[].picklistValues` for `Status` or `StageName`.
-3. **If any picklist values are missing,** add them first with `add_picklist_values` — `BusinessProcess` can ONLY reference values that already exist on the picklist field.
-4. **Call `create_business_process`** with `object_name`, `process_name`, and the ordered list of `picklist_values` to expose. Optionally pass a `default_value` (otherwise the first value is the default).
+3. **If any picklist values are missing,** either:
+   - Add them first with `add_picklist_values`, then call `create_business_process` separately, OR
+   - Call `create_business_process` directly with `auto_add_missing_values: true` to add the missing values inline in one step. Use this when you're building the values and the process together in the same task.
+4. **Call `create_business_process`** with `object_name`, `process_name`, and the ordered list of `picklist_values` to expose. Optionally pass `default_value` (otherwise the first value is the default), or `auto_add_missing_values: true` (see step 3).
 5. **Then call `create_record_type`** with `business_process` set to the new process's `process_name`.
+
+> **Picklist sequencing rule** — `BusinessProcess` can ONLY reference values that ALREADY exist on the controlling picklist (`Case.Status`, `Lead.Status`, or `Opportunity.StageName`). The `create_business_process` tool now preflight-checks this and reports ALL missing values in one error rather than failing on the first one only — but the value still has to land before the process. Use the `auto_add_missing_values` flag to handle it in one tool call.
 
 For Account, Contact, custom objects, and any other object that supports record types, you can call `create_record_type` directly without a business process — they don't use them.
 
@@ -423,6 +484,13 @@ You CAN do this — use `update_profile_record_type_defaults` for each profile. 
 1. Query all profiles: `SELECT Id, Name FROM Profile`
 2. For each profile, call `update_profile_record_type_defaults` with `record_type: "Object.RecordTypeDeveloperName"`, `visible: true`
 3. Use the standard profile name-to-API-name mapping (e.g., "System Administrator" → "Admin", "Standard User" → "Standard") since the Metadata API uses API names
+
+> **Must-have-a-default constraint** — Salesforce requires that when at least one record type for an object is visible to a profile, exactly one must be marked default. The most common trip-up is making a brand-new record type visible on a profile that had no prior record-type entries for that object: `visible: true` plus `default: false` is rejected because nothing else can be the default. Three ways to handle it:
+>   - **Set this RT as the default explicitly:** pass `default: true` (only correct if you actually want this RT to be the default).
+>   - **Let ForceClaw auto-promote:** pass `auto_set_default_when_required: true`. ForceClaw flips `default` to true ONLY when the constraint would otherwise reject the update. Safe default for "I'm just making this new RT visible and there's no existing default."
+>   - **Hide all RTs:** pass `visible: false` — the Master record type then becomes the implicit default.
+>
+> The `update_profile_record_type_defaults` tool preflight-checks this constraint and reports it cleanly with the three options whenever it fires.
 
 **Important Salesforce fact:** Record type access is managed on the **Profile** page in Setup (Setup → Users → Profiles → [Profile] → Record Type Settings), NOT on the Record Type page. There is NO "Profile Assignments" section on the Record Type detail page. Do not tell users to go to the Record Type page to assign profiles.
 

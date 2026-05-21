@@ -147,7 +147,7 @@
             <assignToReference>EmailRecipients</assignToReference>
             <operator>Add</operator>
             <value>
-                <stringValue>savon40@gmail.com</stringValue>
+                <stringValue>cs-team@example.com</stringValue>
             </value>
         </assignmentItems>
         <connector>
@@ -163,7 +163,7 @@
             <assignToReference>ErrorEmailRecipients</assignToReference>
             <operator>Add</operator>
             <value>
-                <stringValue>savon40@gmail.com</stringValue>
+                <stringValue>cs-team@example.com</stringValue>
             </value>
         </assignmentItems>
         <connector>
@@ -192,7 +192,7 @@
         <locationX>314</locationX>
         <locationY>431</locationY>
         <defaultConnector>
-            <targetReference>Get_Steve_Avon</targetReference>
+            <targetReference>Get_CS_Owner</targetReference>
         </defaultConnector>
         <defaultConnectorLabel>No Handoff Exists</defaultConnectorLabel>
         <rules>
@@ -211,7 +211,7 @@
             <label>Handoff Already Exists</label>
         </rules>
     </decisions>
-    <description>Created by Steve Avon on 2026-04-08. When Opportunity is marked Closed Won, checks for existing Customer Success Handoff record. If none exists, creates handoff record and sends email notification. If handoff exists, creates a task noting it already exists.</description>
+    <description>When Opportunity is marked Closed Won, checks for existing Customer Success Handoff record. If none exists, creates handoff record and sends email notification. If handoff exists, creates a task noting it already exists.</description>
     <environments>Default</environments>
     <formulas>
         <name>HandoffRecordUrl</name>
@@ -278,7 +278,7 @@
         <inputAssignments>
             <field>OwnerId</field>
             <value>
-                <elementReference>Get_Steve_Avon.Id</elementReference>
+                <elementReference>Get_CS_Owner.Id</elementReference>
             </value>
         </inputAssignments>
         <inputAssignments>
@@ -357,8 +357,8 @@
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
     <recordLookups>
-        <name>Get_Steve_Avon</name>
-        <label>Get Steve Avon User</label>
+        <name>Get_CS_Owner</name>
+        <label>Get CS Owner User</label>
         <locationX>578</locationX>
         <locationY>539</locationY>
         <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
@@ -370,7 +370,7 @@
             <field>Name</field>
             <operator>EqualTo</operator>
             <value>
-                <stringValue>Steve Avon</stringValue>
+                <stringValue>CS Owner</stringValue>
             </value>
         </filters>
         <filters>
