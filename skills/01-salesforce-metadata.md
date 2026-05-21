@@ -529,6 +529,21 @@ When using `update_page_layout` with `action: "add_section"` or `action: "add"`,
 
 If you're not sure whether a field is required, call `describe_object` and check `fields[].nillable` — `nillable: false` AND `defaultedOnCreate: false` means the field is required and will be auto-placed.
 
+### Layout-required vs schema-required — they're different
+
+"Required on this page layout" and "required at the schema level" are **two separate flags** in Salesforce, and ForceClaw can set both via the Metadata API.
+
+| Flag | What it does | How to set it |
+|---|---|---|
+| **Schema-required** (`nillable: false`) | Field MUST have a value on every record, period. Enforced on every API insert, every Flow record-create, every UI save. Auto-places the field on every page layout. | `create_custom_field` or `update_custom_field` with `required: true`. |
+| **Layout-required** (`<behavior>Required</behavior>` on a `layoutItem`) | Field is required only when a user saves through this specific page layout. API inserts, Flows, and other layouts can still leave it blank. | `update_page_layout` with `action: "set_field_behavior"`, `field_api_name: "...", `behavior: "Required"`. |
+
+**Layout-required is NOT a UI-only flag** — it's exposed via the Metadata API on the `behavior` property of each `layoutItem` (valid values: `Edit`, `Required`, `Readonly`). Earlier versions of ForceClaw lacked the tool action for this and would tell users "you'll have to do this in Setup." That was wrong. Use `update_page_layout` with `action: "set_field_behavior"` instead — see the tool description for the exact parameter shape.
+
+When the user says "make field X required on the page layout" (with the layout name implied or specified), they almost always mean layout-required, not schema-required. Don't auto-flip the schema flag unless they explicitly say "make it required everywhere" / "required on every record."
+
+If the field is **already schema-required** (`nillable: false`), Salesforce forces `behavior: "Required"` on every layout and rejects any attempt to set it to `Edit` or `Readonly`. The `set_field_behavior` action preflight-checks this and surfaces a clean error — you don't need to handle it yourself.
+
 ### FLS is a no-op on required fields AND system audit fields
 Two categories of field never need FLS:
 1. **Required fields** — always readable/editable for any user with object access.
