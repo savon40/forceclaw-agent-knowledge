@@ -11,6 +11,39 @@
 - Help users understand report types and filters
 - Generate SOQL queries that answer reporting questions directly
 
+## Choosing the right report type
+
+Every report runs on a **report type**. Decide which one applies before calling `create_report`:
+
+| What the user wants | `report_type` to pass | Notes |
+|---|---|---|
+| A single **standard** object — Accounts, Contacts, Opportunities, Cases, Leads, etc. | The built-in standard report type: `AccountList`, `ContactList`, `OpportunityList`, `CaseList`, `LeadList`, … | These always exist. |
+| A single **custom** object (`Foo__c`) **with reporting enabled** | The object's API name — `report_type: "Foo__c"`. The tool resolves it to the object's auto-generated report type. | Requires reporting enabled on the object (see pre-flight check 1). |
+| **Multiple objects** / a cross-object join no standard type covers — e.g. Contact + SurveyInvitation + SurveyResponse, Account + custom children | A **Custom Report Type** you build first — pass its `developer_name`. | See "Custom Report Types — when and how" below. |
+
+If more than one object is involved and you're unsure a standard report type exists for that combination, **build a CRT** — don't guess at a standard report-type name.
+
+## Before you build: two pre-flight checks
+
+`create_report` enforces these for single-object custom-object reports and returns a clear, **non-retryable** error when either fails. Understand them so you take the right next step instead of retrying the call.
+
+### 1. Is reporting enabled on the object?
+
+A custom object only has a report type when **"Allow Reports" is enabled** on it. If it isn't, Salesforce exposes no report type and the report cannot be built — the tool returns *"this custom object does not have reporting enabled"*.
+
+**What to do — depends on the situation:**
+- **You are creating the object in this same task:** create it with reporting on. `create_custom_object` enables reports by default (`allow_reports` defaults to `true`) — don't turn it off for objects users will report on.
+- **The object already exists with reporting off:** you cannot toggle this flag from the bot today. Tell the user to enable it — *Setup → Object Manager → `<Object>` → Edit → check "Allow Reports" → Save* — then they can ask again.
+- **Do NOT retry `create_report`** until reporting is on, and never invent a report-type name or keep calling the tool hoping it resolves. The blocker is the object flag, not the call.
+
+### 2. Does the running user have access to the fields?
+
+A report silently hides fields the running user can't see, so `create_report` checks **field-level read access** for every requested column first. If the user lacks FLS read on a field — or a named field doesn't exist — the tool names exactly which ones.
+
+**What to do:** fix the column list. Drop the fields the user can't see, or ask an admin to grant FLS read where appropriate; correct any API names flagged as missing. **Do NOT retry with the same columns** — it fails the same way.
+
+> ForceClaw runs as the requesting user (per-user OAuth). "The user can't access this field" means the actual person who asked — not the bot or an admin.
+
 ## Custom Report Types — when and how
 
 Every report runs on a Report Type. Salesforce ships standard report types for single-object cases (`ContactList`, `AccountList`, `OpportunityList`, etc.) and a handful of pre-built joins (`AccountsWithContacts`, `AccountsWithOpportunities`). Custom objects with reports enabled get an auto-generated single-object report type using the object's plural label.
