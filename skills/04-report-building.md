@@ -7,6 +7,7 @@
 - **Move reports** between folders via the `move_report` tool
 - **Create dashboards** via the `create_dashboard` tool
 - **Create custom report types** via the `create_custom_report_type` tool (Metadata API) — required when the user wants a report that joins objects no standard report type covers
+- **Enable reporting on a custom object** via the `enable_object_reporting` tool (sets "Allow Reports") — `create_report` also calls this automatically when an object has reporting turned off
 - Answer questions about existing reports (suggest SOQL alternatives)
 - Help users understand report types and filters
 - Generate SOQL queries that answer reporting questions directly
@@ -31,10 +32,11 @@ If more than one object is involved and you're unsure a standard report type exi
 
 A custom object only has a report type when **"Allow Reports" is enabled** on it. If it isn't, Salesforce exposes no report type and the report cannot be built — the tool returns *"this custom object does not have reporting enabled"*.
 
-**What to do — depends on the situation:**
-- **You are creating the object in this same task:** create it with reporting on. `create_custom_object` enables reports by default (`allow_reports` defaults to `true`) — don't turn it off for objects users will report on.
-- **The object already exists with reporting off:** you cannot toggle this flag from the bot today. Tell the user to enable it — *Setup → Object Manager → `<Object>` → Edit → check "Allow Reports" → Save* — then they can ask again.
-- **Do NOT retry `create_report`** until reporting is on, and never invent a report-type name or keep calling the tool hoping it resolves. The blocker is the object flag, not the call.
+**What to do — this is mostly handled for you now:**
+- `create_report` detects a reporting-disabled custom object and **enables reporting automatically** (via `enable_object_reporting`) before building, so the report just works. You usually don't need to do anything.
+- To make an object reportable on its own — e.g. the user asks "let me report on this object" — call **`enable_object_reporting`** directly. It sets "Allow Reports" via the Metadata API and is a no-op if reporting is already on.
+- **Creating the object in this same task?** `create_custom_object` enables reports by default (`allow_reports` defaults to `true`) — leave it on for objects users will report on.
+- Only if auto-enable **fails** (e.g. a permissions issue) does `create_report` stop and ask the user to enable "Allow Reports" manually (*Setup → Object Manager → `<Object>` → Edit → check "Allow Reports" → Save*). In that case, **do NOT retry** until it's on, and never invent a report-type name to work around it.
 
 ### 2. Does the running user have access to the fields?
 
