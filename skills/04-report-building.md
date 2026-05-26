@@ -46,6 +46,16 @@ A report silently hides fields the running user can't see, so `create_report` ch
 
 > ForceClaw runs as the requesting user (per-user OAuth). "The user can't access this field" means the actual person who asked — not the bot or an admin.
 
+## Column field tokens — they differ by report type
+
+The token you put in each `metadata.columns[].field` depends on the report type. Getting this wrong fails the deploy with "Invalid field name" or "no CustomField named … found":
+
+- **Standard object report types** (`AccountList`, `OpportunityList`, …): dotted standard names — `ACCOUNT.NAME`, `Account.Industry`, and `Account.My_Field__c` for custom fields.
+- **Single custom-object report** (you pass `Foo__c`; the tool resolves it to `CustomEntity$Foo__c`): the record name column is **`CUST_NAME`**, and custom fields use **dot notation** — `Foo__c.My_Field__c`. Do **not** use the `$` form here.
+- **Custom Report Type** (multi-object): fields use the **`$`** form — `Object$Field`, e.g. `Opportunity$Monthly_Fee__c`.
+
+The running user must have **field-level read access** to every column field — a report hides fields the viewer can't see, and an unreadable custom field won't even deploy onto the report. `create_report` pre-checks this and tells you which fields are blocked.
+
 ## Custom Report Types — when and how
 
 Every report runs on a Report Type. Salesforce ships standard report types for single-object cases (`ContactList`, `AccountList`, `OpportunityList`, etc.) and a handful of pre-built joins (`AccountsWithContacts`, `AccountsWithOpportunities`). Custom objects with reports enabled get an auto-generated single-object report type using the object's plural label.
