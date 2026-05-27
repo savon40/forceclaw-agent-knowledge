@@ -159,42 +159,26 @@ If the user asks for a report with a long descriptive label, shorten it and ment
 
 The **developer name** (`report_name`) is also capped at 40 characters.
 
-### 2. `timeFrameFilter.interval` must be a valid `UserDateInterval` enum value
+### 2. `timeFrameFilter.interval` — default to `INTERVAL_CUSTOM`; relative enums are a trap
 
-Salesforce's `UserDateInterval` enum has a fixed set of values. **Do not invent new ones.** Common mistakes that DO NOT exist: `INTERVAL_LASTYEAR`, `INTERVAL_LAST12`, `INTERVAL_LAST365`, `INTERVAL_ROLLING12`.
+`UserDateInterval` has a fixed, non-obvious set of values, and many plausible-looking names **do not exist** and fail the deploy with `'INTERVAL_X' is not a valid value for the enum 'UserDateInterval'`. Verified-INVALID (do **not** use): `INTERVAL_THISYEAR`, `INTERVAL_LASTYEAR`, `INTERVAL_THISMONTH`, `INTERVAL_THISQUARTER`, `INTERVAL_LAST30`, `INTERVAL_ROLLING12`.
 
-**Valid values:**
-
-| Value | Meaning |
-|---|---|
-| `INTERVAL_CUSTOM` | Custom date range — requires `startDate` and `endDate` in YYYY-MM-DD format |
-| `INTERVAL_YESTERDAY` | Yesterday |
-| `INTERVAL_TODAY` | Today |
-| `INTERVAL_CURRENT` / `INTERVAL_CURRENTNEXT1` / `INTERVAL_CURRENTPREV1` | Current period |
-| `INTERVAL_THISWEEK` / `INTERVAL_LASTWEEK` / `INTERVAL_NEXTWEEK` | Weekly |
-| `INTERVAL_THISMONTH` / `INTERVAL_LASTMONTH` / `INTERVAL_NEXTMONTH` / `INTERVAL_CURNEXTMONTH` / `INTERVAL_CURPREVMONTH` | Monthly |
-| `INTERVAL_THISQUARTER` / `INTERVAL_LASTQUARTER` / `INTERVAL_NEXTQUARTER` / `INTERVAL_CURNEXTQUARTER` / `INTERVAL_CURPREVQUARTER` | Calendar quarter |
-| `INTERVAL_THISYEAR` / `INTERVAL_LASTYEAR_AGO` / `INTERVAL_NEXTYEAR` | Calendar year (note: for "last year" prefer `INTERVAL_CUSTOM`) |
-| `INTERVAL_THISFISCALQUARTER` / `INTERVAL_LASTFISCALQUARTER` / `INTERVAL_NEXTFISCALQUARTER` / `INTERVAL_CURNEXTFQ` / `INTERVAL_CURPREVFQ` | Fiscal quarter |
-| `INTERVAL_THISFISCALYEAR` / `INTERVAL_LASTFISCALYEAR` / `INTERVAL_NEXTFISCALYEAR` | Fiscal year |
-| `INTERVAL_LAST7` / `INTERVAL_LAST30` / `INTERVAL_LAST60` / `INTERVAL_LAST90` / `INTERVAL_LAST120` | Last N days (rolling) |
-| `INTERVAL_NEXT7` / `INTERVAL_NEXT30` / `INTERVAL_NEXT60` / `INTERVAL_NEXT90` / `INTERVAL_NEXT120` | Next N days (rolling) |
-| `INTERVAL_WEEKTODATE` / `INTERVAL_MONTHTODATE` / `INTERVAL_QUARTERTODATE` / `INTERVAL_YEARTODATE` / `INTERVAL_FISCALQUARTERTODATE` / `INTERVAL_FISCALYEARTODATE` | Period-to-date |
-
-**When in doubt, use `INTERVAL_CUSTOM` with explicit dates.** It always works and expresses exactly what the user asked for:
+**Default to `INTERVAL_CUSTOM` with explicit dates you compute yourself.** It is verified to work, expresses exactly the user's intent, and avoids the enum guessing game:
 
 ```json
 {
   "timeFrameFilter": {
     "interval": "INTERVAL_CUSTOM",
-    "dateColumn": "CREATED_DATE",
-    "startDate": "2025-04-11",
-    "endDate": "2026-04-11"
+    "dateColumn": "CLOSE_DATE",
+    "startDate": "2025-01-01",
+    "endDate": "2025-12-31"
   }
 }
 ```
 
-For "within the last year," compute `endDate = today` and `startDate = today minus 365 days` and pass them directly. Do not guess at rolling enum values.
+For "this year," "last 30 days," "last quarter," etc. — compute `startDate`/`endDate` and use `INTERVAL_CUSTOM`. `dateColumn` is the report column token of the date field (e.g. `CLOSE_DATE`, `CREATED_DATE`).
+
+**Verified relative intervals** (the only ones safe to use by name — anything else → `INTERVAL_CUSTOM`): `INTERVAL_CUSTOM`, `INTERVAL_CURRENT` (current period), `INTERVAL_CURFY` (current fiscal year), `INTERVAL_PREVFY` (previous fiscal year).
 
 ### 3. Column field names use report API-name format
 
@@ -226,6 +210,56 @@ If `update_report` fails for any reason, **do not** fall back to `create_report`
 | **Summary** | Groups rows by one or more fields | Most common — group by Stage, Owner, Region, etc. |
 | **Matrix** | Groups by rows AND columns (pivot table) | Cross-tabulation — e.g., pipeline by Stage x Quarter |
 | **Joined** | Multiple report blocks side by side | Comparing different objects or views together |
+
+## Advanced report features (verified syntax)
+
+All of these deploy via the `metadata` object on `create_report` / `update_report`. Use these exact shapes — they're verified against a live org.
+
+### Filter logic (AND / OR / mixed)
+Multiple `criteriaItems` default to AND. For OR or mixed logic, add a `booleanFilter` string referencing the 1-based filter positions:
+```json
+"filter": {
+  "booleanFilter": "1 OR 2",
+  "criteriaItems": [
+    { "column": "STAGE_NAME", "operator": "equals", "value": "Closed Won" },
+    { "column": "STAGE_NAME", "operator": "equals", "value": "Closed Lost" }
+  ]
+}
+```
+
+### Cross-filters (WITH / WITHOUT related records)
+For "Accounts **without** Opportunities", "Contacts **with** Cases", etc. `relatedTableJoinColumn` (the foreign-key field on the related object) is **required**:
+```json
+"crossFilters": [{
+  "operation": "without",                 // or "with"
+  "primaryTableColumn": "Account",        // the report's primary object
+  "relatedTable": "Opportunity",          // the related object
+  "relatedTableJoinColumn": "AccountId"   // FK field on the related object
+}]
+```
+
+### Scope (whose records) — values are report-type-specific
+`scope` valid values: `organization` (All), `user` (My), `team` (My Team's). Do **NOT** use `my` or `mine` — they fail. `organization` works on every report type; for "my records" either use `user` or add a filter on the owner column.
+
+### Matrix format and date groupings
+`format: "Matrix"` requires **both** `groupingsDown` and `groupingsAcross`; `Summary` requires `groupingsDown`. A date grouping's `dateGranularity` must be one of `None`, `Day`, `Week`, `Month`, `Quarter`, `Year` — **not** "Calendar Quarter" or similar.
+
+### Custom summary formula
+```json
+"aggregates": [{
+  "calculatedFormula": "AMOUNT:SUM",      // use Field:SUM / :AVG — not report column tokens
+  "datatype": "currency",                 // currency | number | percent
+  "developerName": "FORMULA1",
+  "isActive": true,
+  "isCrossBlock": false,
+  "masterLabel": "Total",
+  "scale": 2
+}]
+```
+A formula has **no** `scope` element — including one fails the deploy.
+
+### Not available via report metadata
+- **Row limit / Top-N** (the "limit rows" setting on tabular reports) cannot be set through metadata. Use `sortColumn` + `sortOrder` to order, and tell the user to set the row limit in the report builder, or use a filter to narrow the results.
 
 ## SOQL alternatives for common report needs
 
