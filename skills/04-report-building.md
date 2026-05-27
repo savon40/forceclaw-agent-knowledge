@@ -7,9 +7,55 @@
 - **Move reports** between folders via the `move_report` tool
 - **Create dashboards** via the `create_dashboard` tool
 - **Create custom report types** via the `create_custom_report_type` tool (Metadata API) — required when the user wants a report that joins objects no standard report type covers
+- **Enable reporting on a custom object** via the `enable_object_reporting` tool (sets "Allow Reports") — `create_report` also calls this automatically when an object has reporting turned off
+- **Run a saved report** via the `run_report` tool — returns grand totals, per-group breakdowns, or detail rows (read-only; works on any org)
 - Answer questions about existing reports (suggest SOQL alternatives)
 - Help users understand report types and filters
 - Generate SOQL queries that answer reporting questions directly
+
+## Choosing the right report type
+
+Every report runs on a **report type**. Decide which one applies before calling `create_report`:
+
+| What the user wants | `report_type` to pass | Notes |
+|---|---|---|
+| A single **standard** object — Accounts, Contacts, Opportunities, Cases, Leads, etc. | The built-in standard report type: `AccountList`, `ContactList`, `OpportunityList`, `CaseList`, `LeadList`, … | These always exist. |
+| A single **custom** object (`Foo__c`) **with reporting enabled** | The object's API name — `report_type: "Foo__c"`. The tool resolves it to the object's auto-generated report type. | Requires reporting enabled on the object (see pre-flight check 1). |
+| **Multiple objects** / a cross-object join no standard type covers — e.g. Contact + SurveyInvitation + SurveyResponse, Account + custom children | A **Custom Report Type** you build first — pass its `developer_name`. | See "Custom Report Types — when and how" below. |
+
+If more than one object is involved and you're unsure a standard report type exists for that combination, **build a CRT** — don't guess at a standard report-type name.
+
+## Before you build: two pre-flight checks
+
+`create_report` enforces these for single-object custom-object reports and returns a clear, **non-retryable** error when either fails. Understand them so you take the right next step instead of retrying the call.
+
+### 1. Is reporting enabled on the object?
+
+A custom object only has a report type when **"Allow Reports" is enabled** on it. If it isn't, Salesforce exposes no report type and the report cannot be built — the tool returns *"this custom object does not have reporting enabled"*.
+
+**What to do — this is mostly handled for you now:**
+- `create_report` detects a reporting-disabled custom object and **enables reporting automatically** (via `enable_object_reporting`) before building, so the report just works. You usually don't need to do anything.
+- To make an object reportable on its own — e.g. the user asks "let me report on this object" — call **`enable_object_reporting`** directly. It sets "Allow Reports" via the Metadata API and is a no-op if reporting is already on.
+- **Creating the object in this same task?** `create_custom_object` enables reports by default (`allow_reports` defaults to `true`) — leave it on for objects users will report on.
+- Only if auto-enable **fails** (e.g. a permissions issue) does `create_report` stop and ask the user to enable "Allow Reports" manually (*Setup → Object Manager → `<Object>` → Edit → check "Allow Reports" → Save*). In that case, **do NOT retry** until it's on, and never invent a report-type name to work around it.
+
+### 2. Does the running user have access to the fields?
+
+A report silently hides fields the running user can't see, so `create_report` checks **field-level read access** for every requested column first. If the user lacks FLS read on a field — or a named field doesn't exist — the tool names exactly which ones.
+
+**What to do:** fix the column list. Drop the fields the user can't see, or ask an admin to grant FLS read where appropriate; correct any API names flagged as missing. **Do NOT retry with the same columns** — it fails the same way.
+
+> ForceClaw runs as the requesting user (per-user OAuth). "The user can't access this field" means the actual person who asked — not the bot or an admin.
+
+## Column field tokens — they differ by report type
+
+The token you put in each `metadata.columns[].field` depends on the report type. Getting this wrong fails the deploy with "Invalid field name" or "no CustomField named … found":
+
+- **Standard object report types** (`AccountList`, `OpportunityList`, …): dotted standard names — `ACCOUNT.NAME`, `Account.Industry`, and `Account.My_Field__c` for custom fields.
+- **Single custom-object report** (you pass `Foo__c`; the tool resolves it to `CustomEntity$Foo__c`): the record name column is **`CUST_NAME`**, and custom fields use **dot notation** — `Foo__c.My_Field__c`. Do **not** use the `$` form here.
+- **Custom Report Type** (multi-object): fields use the **`$`** form — `Object$Field`, e.g. `Opportunity$Monthly_Fee__c`.
+
+The running user must have **field-level read access** to every column field — a report hides fields the viewer can't see, and an unreadable custom field won't even deploy onto the report. `create_report` pre-checks this and tells you which fields are blocked.
 
 ## Custom Report Types — when and how
 
@@ -114,42 +160,26 @@ If the user asks for a report with a long descriptive label, shorten it and ment
 
 The **developer name** (`report_name`) is also capped at 40 characters.
 
-### 2. `timeFrameFilter.interval` must be a valid `UserDateInterval` enum value
+### 2. `timeFrameFilter.interval` — default to `INTERVAL_CUSTOM`; relative enums are a trap
 
-Salesforce's `UserDateInterval` enum has a fixed set of values. **Do not invent new ones.** Common mistakes that DO NOT exist: `INTERVAL_LASTYEAR`, `INTERVAL_LAST12`, `INTERVAL_LAST365`, `INTERVAL_ROLLING12`.
+`UserDateInterval` has a fixed, non-obvious set of values, and many plausible-looking names **do not exist** and fail the deploy with `'INTERVAL_X' is not a valid value for the enum 'UserDateInterval'`. Verified-INVALID (do **not** use): `INTERVAL_THISYEAR`, `INTERVAL_LASTYEAR`, `INTERVAL_THISMONTH`, `INTERVAL_THISQUARTER`, `INTERVAL_LAST30`, `INTERVAL_ROLLING12`.
 
-**Valid values:**
-
-| Value | Meaning |
-|---|---|
-| `INTERVAL_CUSTOM` | Custom date range — requires `startDate` and `endDate` in YYYY-MM-DD format |
-| `INTERVAL_YESTERDAY` | Yesterday |
-| `INTERVAL_TODAY` | Today |
-| `INTERVAL_CURRENT` / `INTERVAL_CURRENTNEXT1` / `INTERVAL_CURRENTPREV1` | Current period |
-| `INTERVAL_THISWEEK` / `INTERVAL_LASTWEEK` / `INTERVAL_NEXTWEEK` | Weekly |
-| `INTERVAL_THISMONTH` / `INTERVAL_LASTMONTH` / `INTERVAL_NEXTMONTH` / `INTERVAL_CURNEXTMONTH` / `INTERVAL_CURPREVMONTH` | Monthly |
-| `INTERVAL_THISQUARTER` / `INTERVAL_LASTQUARTER` / `INTERVAL_NEXTQUARTER` / `INTERVAL_CURNEXTQUARTER` / `INTERVAL_CURPREVQUARTER` | Calendar quarter |
-| `INTERVAL_THISYEAR` / `INTERVAL_LASTYEAR_AGO` / `INTERVAL_NEXTYEAR` | Calendar year (note: for "last year" prefer `INTERVAL_CUSTOM`) |
-| `INTERVAL_THISFISCALQUARTER` / `INTERVAL_LASTFISCALQUARTER` / `INTERVAL_NEXTFISCALQUARTER` / `INTERVAL_CURNEXTFQ` / `INTERVAL_CURPREVFQ` | Fiscal quarter |
-| `INTERVAL_THISFISCALYEAR` / `INTERVAL_LASTFISCALYEAR` / `INTERVAL_NEXTFISCALYEAR` | Fiscal year |
-| `INTERVAL_LAST7` / `INTERVAL_LAST30` / `INTERVAL_LAST60` / `INTERVAL_LAST90` / `INTERVAL_LAST120` | Last N days (rolling) |
-| `INTERVAL_NEXT7` / `INTERVAL_NEXT30` / `INTERVAL_NEXT60` / `INTERVAL_NEXT90` / `INTERVAL_NEXT120` | Next N days (rolling) |
-| `INTERVAL_WEEKTODATE` / `INTERVAL_MONTHTODATE` / `INTERVAL_QUARTERTODATE` / `INTERVAL_YEARTODATE` / `INTERVAL_FISCALQUARTERTODATE` / `INTERVAL_FISCALYEARTODATE` | Period-to-date |
-
-**When in doubt, use `INTERVAL_CUSTOM` with explicit dates.** It always works and expresses exactly what the user asked for:
+**Default to `INTERVAL_CUSTOM` with explicit dates you compute yourself.** It is verified to work, expresses exactly the user's intent, and avoids the enum guessing game:
 
 ```json
 {
   "timeFrameFilter": {
     "interval": "INTERVAL_CUSTOM",
-    "dateColumn": "CREATED_DATE",
-    "startDate": "2025-04-11",
-    "endDate": "2026-04-11"
+    "dateColumn": "CLOSE_DATE",
+    "startDate": "2025-01-01",
+    "endDate": "2025-12-31"
   }
 }
 ```
 
-For "within the last year," compute `endDate = today` and `startDate = today minus 365 days` and pass them directly. Do not guess at rolling enum values.
+For "this year," "last 30 days," "last quarter," etc. — compute `startDate`/`endDate` and use `INTERVAL_CUSTOM`. `dateColumn` is the report column token of the date field (e.g. `CLOSE_DATE`, `CREATED_DATE`).
+
+**Verified relative intervals** (the only ones safe to use by name — anything else → `INTERVAL_CUSTOM`): `INTERVAL_CUSTOM`, `INTERVAL_CURRENT` (current period), `INTERVAL_CURFY` (current fiscal year), `INTERVAL_PREVFY` (previous fiscal year).
 
 ### 3. Column field names use report API-name format
 
@@ -181,6 +211,64 @@ If `update_report` fails for any reason, **do not** fall back to `create_report`
 | **Summary** | Groups rows by one or more fields | Most common — group by Stage, Owner, Region, etc. |
 | **Matrix** | Groups by rows AND columns (pivot table) | Cross-tabulation — e.g., pipeline by Stage x Quarter |
 | **Joined** | Multiple report blocks side by side | Comparing different objects or views together |
+
+## Advanced report features (verified syntax)
+
+All of these deploy via the `metadata` object on `create_report` / `update_report`. Use these exact shapes — they're verified against a live org.
+
+### Filter logic (AND / OR / mixed)
+Multiple `criteriaItems` default to AND. For OR or mixed logic, add a `booleanFilter` string referencing the 1-based filter positions:
+```json
+"filter": {
+  "booleanFilter": "1 OR 2",
+  "criteriaItems": [
+    { "column": "STAGE_NAME", "operator": "equals", "value": "Closed Won" },
+    { "column": "STAGE_NAME", "operator": "equals", "value": "Closed Lost" }
+  ]
+}
+```
+
+### Cross-filters (WITH / WITHOUT related records)
+For "Accounts **without** Opportunities", "Contacts **with** Cases", etc. `relatedTableJoinColumn` (the foreign-key field on the related object) is **required**:
+```json
+"crossFilters": [{
+  "operation": "without",                 // or "with"
+  "primaryTableColumn": "Account",        // the report's primary object
+  "relatedTable": "Opportunity",          // the related object
+  "relatedTableJoinColumn": "AccountId"   // FK field on the related object
+}]
+```
+
+### Scope (whose records) — values are report-type-specific
+`scope` valid values: `organization` (All), `user` (My), `team` (My Team's). Do **NOT** use `my` or `mine` — they fail. `organization` works on every report type; for "my records" either use `user` or add a filter on the owner column.
+
+### Matrix format and date groupings
+`format: "Matrix"` requires **both** `groupingsDown` and `groupingsAcross`; `Summary` requires `groupingsDown`. A date grouping's `dateGranularity` must be one of `None`, `Day`, `Week`, `Month`, `Quarter`, `Year` — **not** "Calendar Quarter" or similar.
+
+### Custom summary formula
+```json
+"aggregates": [{
+  "calculatedFormula": "AMOUNT:SUM",      // use Field:SUM / :AVG — not report column tokens
+  "datatype": "currency",                 // currency | number | percent
+  "developerName": "FORMULA1",
+  "isActive": true,
+  "isCrossBlock": false,
+  "masterLabel": "Total",
+  "scale": 2
+}]
+```
+A formula has **no** `scope` element — including one fails the deploy.
+
+### Not available via report metadata
+- **Row limit / Top-N** (the "limit rows" setting on tabular reports) cannot be set through metadata. Use `sortColumn` + `sortOrder` to order, and tell the user to set the row limit in the report builder, or use a filter to narrow the results.
+
+## Running an existing report
+
+To execute a saved report and get its numbers, use `run_report` with the report's developer name (or 15/18-char Id). It returns grand totals, per-group breakdowns (summary/matrix), or detail rows (tabular) — you don't need to rebuild the report's logic in SOQL.
+
+- Use it when the user says "run the X report", "what does X show", "what's the total in X", or "pull the numbers from X".
+- The output includes the report's **scope** and **date filter**. Many report types apply a default date filter — e.g. Opportunity reports default to *Close Date = current fiscal quarter*. **If a report returns empty or smaller than expected, check that date filter first** — the report is likely just scoped to the current period, not broken.
+- Read-only and safe on production.
 
 ## SOQL alternatives for common report needs
 
