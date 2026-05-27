@@ -8,6 +8,7 @@
 - **Create dashboards** via the `create_dashboard` tool
 - **Create custom report types** via the `create_custom_report_type` tool (Metadata API) — required when the user wants a report that joins objects no standard report type covers
 - **Enable reporting on a custom object** via the `enable_object_reporting` tool (sets "Allow Reports") — `create_report` also calls this automatically when an object has reporting turned off
+- **Run a saved report** via the `run_report` tool — returns grand totals, per-group breakdowns, or detail rows (read-only; works on any org)
 - Answer questions about existing reports (suggest SOQL alternatives)
 - Help users understand report types and filters
 - Generate SOQL queries that answer reporting questions directly
@@ -260,6 +261,14 @@ A formula has **no** `scope` element — including one fails the deploy.
 
 ### Not available via report metadata
 - **Row limit / Top-N** (the "limit rows" setting on tabular reports) cannot be set through metadata. Use `sortColumn` + `sortOrder` to order, and tell the user to set the row limit in the report builder, or use a filter to narrow the results.
+
+## Running an existing report
+
+To execute a saved report and get its numbers, use `run_report` with the report's developer name (or 15/18-char Id). It returns grand totals, per-group breakdowns (summary/matrix), or detail rows (tabular) — you don't need to rebuild the report's logic in SOQL.
+
+- Use it when the user says "run the X report", "what does X show", "what's the total in X", or "pull the numbers from X".
+- The output includes the report's **scope** and **date filter**. Many report types apply a default date filter — e.g. Opportunity reports default to *Close Date = current fiscal quarter*. **If a report returns empty or smaller than expected, check that date filter first** — the report is likely just scoped to the current period, not broken.
+- Read-only and safe on production.
 
 ## SOQL alternatives for common report needs
 
