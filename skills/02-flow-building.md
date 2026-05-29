@@ -6,8 +6,13 @@
 - Read full Flow definitions and metadata structure
 - **Create new Flows** using the **simplified flow_definition format** (preferred) — describe the trigger, steps, and resources. The tool builds valid Salesforce metadata automatically. No need to provide locationX/Y, connectors, processMetadataValues, or any boilerplate.
 - **Update existing Flows** — two tools, pick the right one (see "Editing existing flows" below).
-- Activate and deactivate existing Flows
-- Delete Flows (must be deactivated first)
+- **Activate** existing Flows via `activate_flow` — sets the active version to the latest
+- **Deactivate** existing Flows via `deactivate_flow` — clears the active version (Tooling API, `FlowDefinition.activeVersionNumber = 0`)
+- **Delete** Flows via `delete_flow` — must be deactivated first
+
+### Deactivation is supported — do not say otherwise
+
+Salesforce **does** support deactivating a flow via the same `FlowDefinition` mechanism `activate_flow` uses, just with `activeVersionNumber` set to `0`. If a user asks to deactivate a flow (or to "deactivate then re-activate"), call `deactivate_flow` — then `activate_flow` if they want it back on. Do **not** tell the user that "the Metadata API doesn't support direct deactivation" or that you need to delete-and-recreate or use manual Setup steps. Those are hallucinations; the tool exists and works.
 - Answer questions about what a Flow does based on its metadata
 
 ---
