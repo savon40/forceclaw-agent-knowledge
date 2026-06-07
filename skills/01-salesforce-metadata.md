@@ -540,7 +540,17 @@ If you're not sure whether a field is required, call `describe_object` and check
 
 **Layout-required is NOT a UI-only flag** — it's exposed via the Metadata API on the `behavior` property of each `layoutItem` (valid values: `Edit`, `Required`, `Readonly`). Earlier versions of ForceClaw lacked the tool action for this and would tell users "you'll have to do this in Setup." That was wrong. Use `update_page_layout` with `action: "set_field_behavior"` instead — see the tool description for the exact parameter shape.
 
-When the user says "make field X required on the page layout" (with the layout name implied or specified), they almost always mean layout-required, not schema-required. Don't auto-flip the schema flag unless they explicitly say "make it required everywhere" / "required on every record."
+**Routing "make field X required" to the right flag:**
+
+- The user says **"required on the page layout"** (or names a specific layout) → layout-required. Use `set_field_behavior`.
+- The user says **"required everywhere"** / **"required on every record"** / **"always required"** → schema-required. Use `update_custom_field` with `required: true`.
+- The user just says **"make it required"** with NO qualifier → this is **ambiguous**, and the two flags have very different blast radius (schema-required is enforced on every API insert, Flow, and integration — far more disruptive). **Do NOT guess, and do NOT silently substitute a validation rule.** Stop and ask one short question, e.g.:
+
+  > Do you want this **required on this page layout only** (users saving through this layout must fill it in, but the API/Flows can still leave it blank), or **required everywhere** (enforced on every record, every insert, every Flow)?
+
+  Then apply the matching tool once they answer. Only fall back to a validation rule if the user specifically wants conditional/cross-field enforcement that neither flag covers.
+
+Never auto-flip the schema flag unless the user clearly asked for org-wide enforcement — `set_field_behavior` (layout-only) is the safer default when the intent leans toward "on the layout."
 
 If the field is **already schema-required** (`nillable: false`), Salesforce forces `behavior: "Required"` on every layout and rejects any attempt to set it to `Edit` or `Readonly`. The `set_field_behavior` action preflight-checks this and surfaces a clean error — you don't need to handle it yourself.
 
