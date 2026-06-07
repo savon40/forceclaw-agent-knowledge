@@ -18,7 +18,7 @@ When a user asks *"I built it / deployed it / activated it, why isn't it showing
 
 ### Write
 - Page layouts: `update_page_layout` (add/remove/move/reorder fields, add/remove sections, add quick actions to the platform action list)
-- Compact layouts: `update_compact_layout`
+- Compact layouts: `update_compact_layout` — upserts: creates the layout when it doesn't exist yet (never tell the user creation is impossible). A compact layout has **no visible effect until it is the object's assigned primary compact layout** — pass `set_as_default: true` when the user expects to see the change (highlights panel / mobile header). The assignment lives on the **CustomObject**, not the layout, so when committing to Git after assigning, retrieve both the `CompactLayout` and the `CustomObject`.
 - Quick actions: `create_quick_action`
 
 ### Not yet built (roadmap — `Bot_SF_Capabilities.md`)

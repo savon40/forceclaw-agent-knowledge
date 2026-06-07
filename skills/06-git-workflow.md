@@ -60,6 +60,7 @@ Common Flavor B tools and the matching Metadata API type to retrieve:
 | `create_validation_rule`, `update_validation_rule` | `ValidationRule` | `Object.RuleName` |
 | `update_page_layout` | `Layout` | `Object-Layout Name` |
 | `update_compact_layout` | `CompactLayout` | `Object.LayoutName` |
+| `update_compact_layout` with `set_as_default: true` | `CompactLayout` + `CustomObject` | the assignment lives on the object — retrieve both |
 | `update_flexipage` | `FlexiPage` | `FlexiPageDevName` |
 | `set_field_level_security` | `Profile` | profile API name (one per profile granted) |
 | `create_permission_set`, `update_permission_set_*` | `PermissionSet` | permission set API name |
