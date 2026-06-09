@@ -21,7 +21,7 @@
             <columnToColumn>false</columnToColumn>
             <isUnlocked>true</isUnlocked>
             <operator>equals</operator>
-            <value>Kristin Competitor,Nick Competitor,Steph Competitor,Stetson Competitor</value>
+            <value>Rep Seven Competitor,Rep One Competitor,Rep Eight Competitor,Rep Nine Competitor</value>
         </criteriaItems>
         <criteriaItems>
             <column>SUBJECT</column>

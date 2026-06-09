@@ -64,14 +64,14 @@
             <columnToColumn>false</columnToColumn>
             <isUnlocked>true</isUnlocked>
             <operator>notContain</operator>
-            <value>sszakelyhidi@conairgroup.com,jcustodio@gopro.com,test@test.com</value>
+            <value>contact2@test.com,contact1@test.com,test@test.com</value>
         </criteriaItems>
         <criteriaItems>
             <column>CONTACT_OWNER</column>
             <columnToColumn>false</columnToColumn>
             <isUnlocked>true</isUnlocked>
             <operator>notContain</operator>
-            <value>Nick Jones,Tonia Speir,John Karl,Linley Lepage,Sloan Seymour</value>
+            <value>Rep One,Rep Two,Rep Three,Rep Four,Rep Five</value>
         </criteriaItems>
     </filter>
     <format>Tabular</format>

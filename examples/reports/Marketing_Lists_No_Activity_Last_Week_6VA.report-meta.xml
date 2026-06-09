@@ -12,7 +12,7 @@
             <columnToColumn>false</columnToColumn>
             <isUnlocked>true</isUnlocked>
             <operator>equals</operator>
-            <value>Celia Preliminary,Kristin Competitor,Kristin RFP,Nick Competitor,Nick Top 10,Steph Competitor,Steph RFP,Stetson Competitor,Stetson RFP</value>
+            <value>Rep Six Preliminary,Rep Seven Competitor,Rep Seven RFP,Rep One Competitor,Rep One Top 10,Rep Eight Competitor,Rep Eight RFP,Rep Nine Competitor,Rep Nine RFP</value>
         </criteriaItems>
         <criteriaItems>
             <column>DUE_DATE</column>

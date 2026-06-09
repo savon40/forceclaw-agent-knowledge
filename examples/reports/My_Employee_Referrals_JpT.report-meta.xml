@@ -37,11 +37,11 @@
         <field>EMAIL</field>
     </columns>
     <columns>
-        <field>Contact.Wpromote_Employee_Name__c</field>
+        <field>Contact.Acme_Employee_Name__c</field>
     </columns>
     <filter>
         <criteriaItems>
-            <column>Contact.Wpromote_Employee_Name__c</column>
+            <column>Contact.Acme_Employee_Name__c</column>
             <columnToColumn>false</columnToColumn>
             <isUnlocked>true</isUnlocked>
             <operator>notEqual</operator>
@@ -59,7 +59,7 @@
             <columnToColumn>false</columnToColumn>
             <isUnlocked>false</isUnlocked>
             <operator>equals</operator>
-            <value>Nick Jones</value>
+            <value>Rep One</value>
         </criteriaItems>
     </filter>
     <format>Summary</format>
@@ -68,7 +68,7 @@
         <field>CREATED_DATE</field>
         <sortOrder>Asc</sortOrder>
     </groupingsDown>
-    <name>My Wpromote Employee Referrals</name>
+    <name>My Acme Employee Referrals</name>
     <params>
         <name>co</name>
         <value>1</value>

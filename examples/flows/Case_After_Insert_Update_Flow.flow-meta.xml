@@ -100,7 +100,7 @@
             <assignToReference>Case_Email_Recipients</assignToReference>
             <operator>Add</operator>
             <value>
-                <stringValue>aisearch@wpromote.com</stringValue>
+                <stringValue>aisearch@test.com</stringValue>
             </value>
         </assignmentItems>
         <connector>
@@ -594,7 +594,7 @@ Idea Type: {!$Record.Idea_Type__c}
 Departments with Potential Revenue Impact:  {!FinalDepartmentText}
 Categories: {!FinalCategoryText}
 Average Monthly Paid Media Spend: {!$Record.Average_Monthly_Paid_Media_Spend__c}
-If the client does not have SEO services with Wpromote do they have another SEO agency or in-house team? {!$Record.SEO_Agency_or_In_House_Team__c}
+If the client does not have SEO services with Acme do they have another SEO agency or in-house team? {!$Record.SEO_Agency_or_In_House_Team__c}
 What are the client&apos;s development/implementation capabilities? {!$Record.Development_Implementation_Capabilities__c}
 What are the client&apos;s content creation capabilities? {!$Record.Content_Creation_Capabilities__c}
 Short Description: {!$Record.Short_Description_of_Growth_Idea__c}

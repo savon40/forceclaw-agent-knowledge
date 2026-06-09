@@ -216,7 +216,7 @@
     <formulas>
         <name>HandoffRecordUrl</name>
         <dataType>String</dataType>
-        <expression>&quot;https://wpromote--partial.sandbox.lightning.force.com/lightning/r/Customer_Success_Handoff__c/&quot; &amp; {!HandoffRecordId} &amp; &quot;/view&quot;</expression>
+        <expression>&quot;https://acme--partial.sandbox.lightning.force.com/lightning/r/Customer_Success_Handoff__c/&quot; &amp; {!HandoffRecordId} &amp; &quot;/view&quot;</expression>
     </formulas>
     <interviewLabel>Opportunity CS Handoff and Chatter {!$Flow.CurrentDateTime}</interviewLabel>
     <label>Opportunity CS Handoff and Chatter</label>
@@ -424,7 +424,7 @@ Owner: {!$Record.Owner.Name}
 
 Customer Success Handoff Record: {!HandoffRecordId}
 
-View Opportunity: https://wpromote--partial.sandbox.lightning.force.com/lightning/r/Opportunity/{!$Record.Id}/view
+View Opportunity: https://acme--partial.sandbox.lightning.force.com/lightning/r/Opportunity/{!$Record.Id}/view
 View Handoff: {!HandoffRecordUrl}</text>
     </textTemplates>
     <textTemplates>
