@@ -43,9 +43,11 @@ A custom object only has a report type when **"Allow Reports" is enabled** on it
 
 A report silently hides fields the running user can't see, so `create_report` checks **field-level read access** for every requested column first. If the user lacks FLS read on a field — or a named field doesn't exist — the tool names exactly which ones.
 
-**What to do:** fix the column list. Drop the fields the user can't see, or ask an admin to grant FLS read where appropriate; correct any API names flagged as missing. **Do NOT retry with the same columns** — it fails the same way.
+**What to do:** the right move depends on who's blocked. Because ForceClaw runs as the requesting user, if that user is an admin (or can otherwise manage field-level security), **offer to grant the missing FLS read with `set_field_level_security` and then retry** — don't just strip useful columns out from under them. Otherwise, drop the fields the user can't see or ask an admin to grant FLS read; correct any API names flagged as missing. **Do NOT retry with the same columns** — it fails the same way.
 
 > ForceClaw runs as the requesting user (per-user OAuth). "The user can't access this field" means the actual person who asked — not the bot or an admin.
+
+**Never substitute a different artifact for the report the user asked for.** If `create_report` can't succeed, say so plainly and explain the blocker (e.g. which fields lack FLS, and that you can grant it). Do **not** quietly fall back to `generate_document`, a CSV, or a raw SOQL dump and present it as "the report." Handing back a spreadsheet when the user asked for a Salesforce report is a product failure — surface the real blocker and the real next step (grant FLS, fix the columns) instead.
 
 ## Column field tokens — they differ by report type
 

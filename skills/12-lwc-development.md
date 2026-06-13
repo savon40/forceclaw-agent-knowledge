@@ -51,6 +51,7 @@ LWC HTML templates have STRICT rules — no JavaScript expressions of any kind. 
 7. **NO HTML entities or special characters** in button labels or text content — stick to plain ASCII text
 8. **Static inline styles MUST be quoted** — `style="color: red; font-weight: bold"` is OK, but dynamic styles MUST use a getter: `style={myStyle}`
 9. **NEVER use `update_apex_class` for LWC files** — use `update_lwc` to modify existing LWC components. `update_apex_class` is only for `.cls` Apex files
+10. **The Apex controller must exist BEFORE the LWC that imports it** — any `import x from '@salesforce/apex/Controller.method'` requires that `Controller` Apex class (with that `@AuraEnabled` method) to already be in the org. Deploying an LWC that references a non-existent Apex class fails with **"Unable to find Apex action class referenced as 'Controller'."** So: create the Apex controller first with `create_apex_class` (include the `@AuraEnabled` method, and `cacheable=true` for wired reads), confirm it deployed, THEN `create_lwc`/`update_lwc`. If a component doesn't need server data, don't import an Apex controller at all — use LDS / UI API wire adapters (`getRecord`, `getObjectInfo`) instead.
 
 ### These patterns ALWAYS cause LWC1058 deploy failure
 

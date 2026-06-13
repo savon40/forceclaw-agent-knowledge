@@ -169,6 +169,8 @@ Steps are an ordered array. **Connectors are auto-generated from the array order
 | `custom_error` | Block save with error (before-save only). Fields: `message`, `field?` |
 | `action_call` | Generic action. Fields: `action_name`, `action_type`, `input_parameters` |
 
+> **There is no `screen` step.** `flow_definition` cannot build Screen flows — it is for record-triggered, autolaunched, and scheduled flows only. If you pass a `type: "screen"` step the tool rejects it with an error telling you to use the metadata path. To build a Screen flow, pass raw Flow metadata via the `metadata` parameter — see **"Building Screen Flows"** below.
+
 ### CRITICAL field names — use EXACTLY these (common model mistakes)
 
 | Step type | Correct field | Wrong (causes crash) |
@@ -707,6 +709,49 @@ Almost never. The only legitimate exception is a Before Save flow that only upda
 | **Autolaunched Flow** | `AutoLaunchedFlow` | *(none)* | Background processing, invoked by other automation or Apex |
 | **Scheduled Flow** | `AutoLaunchedFlow` | `Scheduled` | Runs on a schedule against a set of records |
 | **Platform Event-Triggered** | `AutoLaunchedFlow` | `PlatformEvent` | Runs when a platform event is published |
+
+## Building Screen Flows
+
+Screen flows are **not** supported by `flow_definition` (there is no `screen` step). Build them by passing raw Salesforce Flow metadata via the `metadata` parameter to `create_flow`: a top-level `screens` array, a `start` whose connector targets the first screen, `processType: "Flow"`, and the screens wired in order.
+
+### Screen field types — this is the #1 screen-flow mistake
+
+The `fieldType` you choose dictates whether choices are allowed. Getting this wrong fails the deploy with **"Choices are not allowed for this screen field type."**
+
+| What you want | `fieldType` | How values work |
+|---|---|---|
+| Free text / number / date / currency | `InputField` | Set `dataType` (`String`, `Number`, `Date`, `Currency`, …). **No choices.** |
+| Checkbox (true/false) | `InputField` with `dataType: "Boolean"` | **No choices.** |
+| Picklist (pick one from a list) | `DropdownBox` | `choiceReferences` → names of flow-level `choices`. |
+| Radio buttons (pick one) | `RadioButtons` | `choiceReferences` → names of flow-level `choices`. |
+| Pick many | `MultiSelectPicklist` or `MultiSelectCheckboxes` | `choiceReferences` → flow-level `choices`. |
+| Read-only text/instructions | `DisplayText` | `fieldText` holds the HTML. No `dataType`. |
+
+**Rule:** choices belong ONLY on `DropdownBox` / `RadioButtons` / `MultiSelect*` fields, via `choiceReferences`. NEVER put choices (or `choiceReferences`) on an `InputField` — that's the error above. A "pick Bundle/FFS/Access" field is a `DropdownBox`, not an `InputField` with a picklist.
+
+### Choices are flow-level resources
+
+Each selectable value is a `choices` entry on the Flow (a top-level resource, like variables), and the screen field references it by name:
+
+```json
+{
+  "choices": [
+    { "name": "Structure_Bundle", "choiceText": "Bundle", "dataType": "String", "value": { "stringValue": "Bundle" } },
+    { "name": "Structure_FFS",    "choiceText": "FFS",    "dataType": "String", "value": { "stringValue": "FFS" } }
+  ],
+  "screens": [{
+    "name": "Options_Screen", "label": "Options", "allowBack": true, "allowFinish": true, "allowPause": false,
+    "fields": [
+      { "name": "Structure", "fieldType": "DropdownBox", "dataType": "String", "fieldText": "Structure",
+        "choiceReferences": ["Structure_Bundle", "Structure_FFS"] }
+    ]
+  }]
+}
+```
+
+### Layout limits — don't force what screens can't do
+
+Flow screens stack fields vertically (optionally grouped into `Section`/`Column` regions). They are **not** good at true side-by-side "repeat these N columns and add more on demand" layouts. If the user asks for a dynamic, multi-column, add-as-you-go grid, say so plainly and offer the realistic option (a Lightning Web Component) rather than producing a broken screen flow.
 
 ## Querying flow metadata — STOP and read this before querying
 
