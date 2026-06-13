@@ -67,6 +67,15 @@ public class AccountTriggerHandler {
 
 See `examples/apex/trigger.cls` and `examples/apex/handler-class.cls` for full reference.
 
+### Create the handler class BEFORE the trigger
+
+A trigger that references a handler (or any other Apex class) won't compile until that class exists in the org — deploying the trigger first fails with **"Invalid type: AccountTriggerHandler."** Order matters:
+
+1. `create_apex_class` for the handler (and any other classes the trigger references) — confirm it deployed.
+2. *Then* `create_apex_trigger` for the trigger that delegates to it.
+
+Same rule for any class-to-class dependency: the referenced class must be deployed before the code that references it. If you're creating several interdependent classes, create the leaf dependencies first and work up. (This is the Apex analog of the LWC rule — an LWC's `@salesforce/apex/Controller` must also exist before the component that imports it.)
+
 ## Test class requirements
 
 Every Apex class and trigger needs test coverage. Salesforce requires **75% code coverage** for deployment, but aim for **90%+**.

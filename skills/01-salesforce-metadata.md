@@ -161,6 +161,27 @@ WHERE EntityDefinition.QualifiedApiName = 'Account'
 
 Or split into two separate queries and merge results client-side. ForceClaw's `query_salesforce` / `query_tooling` tools will surface this restriction in the error when triggered.
 
+### Can't `GROUP BY` a custom object's `Name` through a custom lookup
+
+Grouping by a **standard** relationship's field works (`GROUP BY AccountId, Account.Name` is fine). But grouping by a **custom object's `Name` field through a custom lookup** is rejected with *"field 'Name' can not be grouped in a query call"*:
+
+```sql
+-- ❌ REJECTED
+SELECT Position__c, Position__r.Name, COUNT(Id)
+FROM Application__c
+GROUP BY Position__c, Position__r.Name
+```
+
+Group by the **lookup Id only**, then resolve the names in a second query:
+
+```sql
+-- ✅ Group by the Id
+SELECT Position__c, COUNT(Id) appCount FROM Application__c GROUP BY Position__c ORDER BY COUNT(Id) DESC
+-- then: SELECT Id, Name FROM Position__c WHERE Id IN (:those ids)  — merge client-side
+```
+
+Better yet, if the user wants this as a deliverable, **build an actual report** (`create_report`) grouped by the lookup — Salesforce reports display the related record's name natively when you group by a lookup, with no SOQL gymnastics.
+
 ### "Disjunctions not supported" on some compound fields
 
 A handful of compound and polymorphic fields reject `OR` clauses entirely. The error reads `Disjunctions not supported`. There's no in-query workaround — split into separate queries and merge client-side.

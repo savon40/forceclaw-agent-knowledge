@@ -205,6 +205,7 @@ In sandbox and developer orgs, you can create and modify permission sets using t
 - You must specify all four CRUD booleans: `allow_create`, `allow_read`, `allow_edit`, `allow_delete`
 - Optionally set `view_all_records` and `modify_all_records` (default false)
 - This uses a read-modify-write pattern — it reads the current PS, merges the change, then saves
+- **Master-detail / required-lookup dependency:** if the object is the **detail** side of a master-detail (or has a required lookup), Salesforce requires the **parent** object's permission too — e.g. granting Read on `Application__c` fails with *"Permission Read Application__c depends on permission(s): Read Position__c"*. When you hit this, grant the named parent permission as well (and at the same or higher level — e.g. parent Read for child Read, parent Edit for child Edit), then retry. The cleanest move is to grant the parent object's permissions in the same pass so the child grant succeeds first time.
 
 ### Adding field-level security
 - Use `update_permission_set_field_permissions` to grant read/edit access to specific fields
