@@ -43,7 +43,11 @@ A custom object only has a report type when **"Allow Reports" is enabled** on it
 
 A report silently hides fields the running user can't see, so `create_report` checks **field-level read access** for every requested column first. If the user lacks FLS read on a field — or a named field doesn't exist — the tool names exactly which ones.
 
-**What to do:** the right move depends on who's blocked. Because ForceClaw runs as the requesting user, if that user is an admin (or can otherwise manage field-level security), **offer to grant the missing FLS read with `set_field_level_security` and then retry** — don't just strip useful columns out from under them. Otherwise, drop the fields the user can't see or ask an admin to grant FLS read; correct any API names flagged as missing. **Do NOT retry with the same columns** — it fails the same way.
+**What to do: STOP and ask — never change security on your own.** Name the blocked fields for the user, tell them you *can* grant FLS read to fix it, and ask how they want to proceed. Then wait for their answer before touching anything — do NOT grant FLS, create or assign a permission set, or edit any profile until they say so. Approval to build the report is NOT approval to change security.
+
+When the user says yes: ForceClaw runs as the requesting user, so granting **read FLS on that user's own profile** is all that's needed for them to see the report. Grant exactly that minimal scope with `set_field_level_security`, then actually call `create_report` again and report what really happens — the grant is live immediately, so do NOT pre-emptively claim it still won't work, and never offer to "log out and back in" or "refresh the session" as a step. NEVER, on your own initiative, grant FLS to other profiles or "All Profiles", create or assign a permission set, or modify the System Administrator (or any other) profile — those are separate, larger changes the user must explicitly request. If the user can't manage field-level security (or doesn't want FLS changed), drop the blocked columns or have them ask an admin; correct any API names flagged as missing. Either way, **do NOT retry with the same columns** before access is fixed — it fails the same way.
+
+FLS changes take effect immediately. The user does NOT need to log out of Salesforce and back in for granted access to apply — never tell them to.
 
 > ForceClaw runs as the requesting user (per-user OAuth). "The user can't access this field" means the actual person who asked — not the bot or an admin.
 
