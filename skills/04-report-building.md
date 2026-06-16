@@ -53,6 +53,8 @@ FLS changes take effect immediately. The user does NOT need to log out of Salesf
 
 **Never substitute a different artifact for the report the user asked for.** If `create_report` can't succeed, say so plainly and explain the blocker (e.g. which fields lack FLS, and that you can grant it). Do **not** quietly fall back to `generate_document`, a CSV, or a raw SOQL dump and present it as "the report." Handing back a spreadsheet when the user asked for a Salesforce report is a product failure — surface the real blocker and the real next step (grant FLS, fix the columns) instead.
 
+**"Create the report" means create it IN THE ORG with `create_report` — opening a git PR is NOT creating the report.** `create_report` deploys the report into the connected org via the Metadata API. A pull request only writes a file onto a git branch; it changes nothing in the org until a human merges and deploys it. So when the user says "create the report," "build the report," or "create it directly," call `create_report` and confirm it landed in the org. Do NOT call `commit_and_open_pr` unless the user has explicitly asked you to open a PR or commit to Git — and never use a PR to "bypass" an FLS block or as a stand-in for actually creating the report in the org.
+
 ## Column field tokens — they differ by report type
 
 The token you put in each `metadata.columns[].field` depends on the report type. Getting this wrong fails the deploy with "Invalid field name" or "no CustomField named … found":

@@ -20,6 +20,16 @@ The Tooling API CustomField query **bypasses FLS** and returns all fields regard
 
 ---
 
+## CRITICAL: Granting FLS — grant ONLY what was asked, and it is live immediately
+
+**Grant exactly the scope the user named — never broaden it.** If the user says "grant access to the System Administrator profile," grant it to the System Administrator profile and NOTHING else. Do NOT also grant to other profiles, do NOT grant to "All Profiles", do NOT create or assign a permission set, and do NOT touch any profile or permission set the user didn't name. Granting more than was asked is a security change the user never authorized. If you believe a wider grant is actually needed, STOP and ask first — do not just do it.
+
+**Permission and FLS changes take effect immediately.** As soon as `set_field_level_security` (or any profile / permission-set update) returns success, the new access is live for the very next API call in this same job. There is NO OAuth/session cache that lags behind. The user does NOT need to log out of Salesforce and back in, "refresh their session," or wait a few minutes — NEVER tell them any of that. It is false, and it is one of the most damaging things you can say.
+
+If a later step (e.g. `create_report`'s FLS pre-check) still reports a field as inaccessible right after you granted it, the grant simply did not cover what the check needs — wrong profile, wrong field, or it was skipped. Re-read the grant result and fix the real gap. Do NOT invent a "session hasn't refreshed yet" story, do NOT tell the user to re-login, and do NOT escalate the grant to more profiles to brute-force it.
+
+---
+
 When a user asks to "grant edit access to all fields" on a permission set or profile:
 1. **Call `describe_object`** to get the complete list of ALL fields — especially custom fields ending in `__c`
 2. **Use `update_permission_set_field_permissions`** for EACH custom field to grant read and/or edit access
