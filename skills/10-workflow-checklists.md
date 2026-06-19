@@ -330,18 +330,49 @@ Approval processes use `finalApprovalActions`, `finalRejectionActions`, and `rec
 
 #### Deployment order for a classic approval with field update:
 
-1. **Create the WorkflowFieldUpdate first** via Metadata API. **Do NOT try `Metadata.WorkflowFieldUpdate` in Anonymous Apex — that class doesn't exist.** Since there is no dedicated tool for this, tell the user you'll create the approval process and they need to add the field update action manually:
+1. **Create the field update first** with the `create_field_update` tool. This creates a `WorkflowFieldUpdate` via the Metadata API. Pass `object_name`, a `field_update_name` (DeveloperName, e.g. `Set_Support_Tier_To_Tier_2`), a `label`, the `field_to_update` (e.g. `Support_Tier__c`), `operation` (`Literal`, `Formula`, `Null`, `NextValue`, or `PreviousValue`), and `literal_value` when the operation is `Literal` (e.g. `"Tier 2"`).
+   - **Do NOT try `Metadata.WorkflowFieldUpdate` in Anonymous Apex — that class doesn't exist.** Use the `create_field_update` tool.
+   - The tool waits for the field update to be addressable before returning, so the approval process you create next can reference it without a race.
 
-   > "I've created the approval process. To complete the setup, go to Setup → Approval Processes → [process name] → Final Approval Actions → Add New → Field Update, and configure it to set [field] to [value]."
-
-2. **Then create the approval process** using `create_approval_process` referencing the field update by name:
+2. **Then create the approval process** with `create_approval_process`, referencing the field update by the same `field_update_name` and type `FieldUpdate`:
    ```json
    "finalApprovalActions": {
-     "action": [{ "name": "FieldUpdateName", "type": "FieldUpdate" }]
+     "action": [{ "name": "Set_Support_Tier_To_Tier_2", "type": "FieldUpdate" }]
    }
    ```
 
-   If the field update doesn't exist yet, create the approval process **without** `finalApprovalActions` and instruct the user to add it manually.
+   Same pattern for an Alert action: create it first with `create_email_alert`, then reference it by name/type `Alert`. Never reference an action you haven't created — Salesforce rejects the whole process with "undefined action".
+
+If for some reason a field update genuinely can't be created (the tool returns an error you can't resolve), fall back to creating the approval process **without** that action and tell the user the exact Setup steps to add it manually (Setup → Approval Processes → [process name] → Final Approval Actions → Add New → Field Update). Don't silently drop it — say what's missing.
+
+#### Correct `create_approval_process` metadata shape
+
+Get the shapes below right on the first call — these are the fields models most often get wrong (the tool reorders keys and drops invalid ones for you, but it can't invent values it wasn't given):
+
+- **Manager / hierarchy approver:** set `nextAutomatedApprover` to `{ "useApproverFieldOfRecordOwner": true, "userHierarchyField": "Manager" }`. BOTH keys are required together — `useApproverFieldOfRecordOwner: true` without `userHierarchyField` fails with "Required field is missing: userHierarchyField". Do NOT put a `type` key here.
+- **Step approver:** `assignedApprover` is `{ "approver": [{ "type": "userHierarchyField" }] }` (or `type` `user` with a `name`, `queue`, `role`, etc.). Do NOT put a `type: "Automatically"` on `assignedApprover` itself.
+- **Multiple approvers:** `whenMultipleApprovers` (`FirstResponse` or `Unanimous`) goes INSIDE `assignedApprover`, not on the step.
+- **Don't send** `stepNumber` (inferred from array order) or invented fields like `submissionRule`.
+
+Minimal working example (manager approval, field update on approval):
+```json
+{
+  "active": false,
+  "entryCriteria": { "formula": "AND(ISPICKVAL(Support_Tier__c, \"Tier 1\"), Escalated__c = true)" },
+  "nextAutomatedApprover": { "useApproverFieldOfRecordOwner": true, "userHierarchyField": "Manager" },
+  "approvalStep": [{
+    "name": "Manager_Approval",
+    "label": "Manager Approval",
+    "assignedApprover": { "approver": [{ "type": "userHierarchyField" }] }
+  }],
+  "finalApprovalActions": { "action": [{ "name": "Set_Support_Tier_To_Tier_2", "type": "FieldUpdate" }] },
+  "finalApprovalRecordLock": true
+}
+```
+
+#### After it's created: it's INACTIVE
+
+The approval process is created **inactive** and there is no tool (and no supported Apex path) to activate it — do NOT try `execute_anonymous_apex` to activate it, and do NOT run `validate_deploy_to_production` for it. Once the create succeeds, STOP and tell the user it's ready but inactive, and to activate it in Setup → Approval Processes → [process name] → Activate. Report what you actually created (the field update + the approval process referencing it); don't claim it's live.
 
 #### Ask about:
 1. **Object** — which object needs approval?
