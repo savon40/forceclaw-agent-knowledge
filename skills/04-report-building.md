@@ -189,6 +189,8 @@ For "this year," "last 30 days," "last quarter," etc. — compute `startDate`/`e
 
 **Verified relative intervals** (the only ones safe to use by name — anything else → `INTERVAL_CUSTOM`): `INTERVAL_CUSTOM`, `INTERVAL_CURRENT` (current period), `INTERVAL_CURFY` (current fiscal year), `INTERVAL_PREVFY` (previous fiscal year).
 
+**Don't narrate enum/metadata mechanics to the user.** Just pick the right value and build the report. Never explain to the user which `UserDateInterval` enums exist, that `THIS_YEAR`/`INTERVAL_THISYEAR` is invalid, what `timeFrameFilter.interval` or `dateColumn` is, or which enum you're "going to set." Describe the filter in plain business language only — e.g. "I filtered it to this year (Jan 1–Dec 31, 2026)" — not "I'll set timeFrameFilter.interval to INTERVAL_CUSTOM." The API enum names are internal; the user neither knows nor cares about them. (ForceClaw also auto-converts common relative phrasings like "this year"/"last quarter"/"last N days" to the correct date range server-side, so you rarely need to compute them yourself — but still report the result in plain language.)
+
 ### 3. Column field names use report API-name format
 
 Report columns use UPPERCASE names with dot notation, not the normal SOQL field names:
@@ -368,11 +370,15 @@ GROUP BY CALENDAR_YEAR(CreatedDate), CALENDAR_MONTH(CreatedDate)
 ORDER BY CALENDAR_YEAR(CreatedDate), CALENDAR_MONTH(CreatedDate)
 ```
 
-## Date filters for reports
+## Date literals for SOQL queries (NOT report intervals)
 
-When users ask for time-based reports, use Salesforce date literals:
+These are **SOQL `WHERE`-clause date literals** for `query_salesforce` only. They are
+**NOT** valid for a report's `timeFrameFilter.interval` — a report interval is a
+`UserDateInterval` enum (see section 2 above: default to `INTERVAL_CUSTOM` with computed
+dates). Do not pass `THIS_YEAR` / `THIS_QUARTER` / `LAST_N_DAYS:30` as a report interval —
+they will be rejected.
 
-| Period | Literal | Example use |
+| Period | SOQL literal | Example use |
 |---|---|---|
 | Today | `TODAY` | Tasks due today |
 | This week | `THIS_WEEK` | Activities created this week |
