@@ -213,6 +213,19 @@ If you need to add a grouping to a Tabular report, you must also change the form
 
 If `update_report` fails for any reason, **do not** fall back to `create_report` with a different name. That silently creates a duplicate report and leaves the original broken. Instead, report the error to the user, explain what you tried, and ask how to proceed.
 
+## Building a dashboard (and its source reports)
+
+A dashboard shows **source reports** as visual components. Build the reports first, then the dashboard.
+
+**Source reports must be plain — do NOT embed a `chart` in a report you're building for a dashboard.** The chart is rendered by the **dashboard component**, not the report. Each source report is just a `Summary` or `Matrix` report with the right `groupingsDown` / `groupingsAcross` and a summarized measure (a `chartSummaries`/aggregate or a summary formula). Embedding a `chart` in the report is unnecessary and its parameters are type-specific and easy to get wrong (e.g. a Line chart rejects `showTotal` and `secondaryGroupingColumn`). Leave `chart` off the report metadata.
+
+**The dashboard component is where the visualization lives.** ForceClaw fills the required dashboard fields for you (background colors, title size, running user, folder, chart `sortBy`/`chartAxisRange`, gauge indicator colors) and accepts either the modern grid layout or classic sections — so describe each component plainly:
+- `componentType`: `Gauge`, `Metric`, `Table`, or a chart type (`Bar`, `Column`, `Line`, `Funnel`, `Pie`, `Donut`, …)
+- `report`: the source report's developer name (ForceClaw resolves it to the folder-qualified form)
+- `header`, plus type-specific bits you care about (gauge `gaugeMin`/`gaugeMax`, etc.)
+
+Map the user's request to components: "gauge of X" → a `Gauge` on the X report; "funnel of Y by stage" → a `Funnel`; "bar chart of Z by rep" → a `Bar`; "line chart of W trend" → a `Line`. One source report per component.
+
 ## Report types
 
 | Type | What it does | When to use |
