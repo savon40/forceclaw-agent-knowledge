@@ -493,7 +493,13 @@ Only Case, Lead, and Opportunity ever have business processes — querying any o
 
 > **Picklist sequencing rule** — `BusinessProcess` can ONLY reference values that ALREADY exist on the controlling picklist (`Case.Status`, `Lead.Status`, or `Opportunity.StageName`). The `create_business_process` tool now preflight-checks this and reports ALL missing values in one error rather than failing on the first one only — but the value still has to land before the process. Surface those missing values to the user and confirm before adding them; only then use `add_picklist_values` (or the `auto_add_missing_values` flag) to create them.
 
+> **Stage / status ORDER is global, not per-process.** A Business Process only controls WHICH values are included — never their order. The order shown in a Sales Process, Support Process, or Lead Process is inherited from the underlying picklist's value order (`Opportunity.StageName`, `Case.Status`, `Lead.Status`). So if a user asks for stages "in this order" and the order doesn't already match, you cannot fix it inside the business process — you reorder the field with `reorder_picklist_values`. Note this is an ORG-WIDE change (it affects the picklist everywhere and every process built on it), so confirm with the user before doing it. A newly added value lands at the END of the picklist, which is the usual reason a just-added stage shows up last.
+
 For Account, Contact, custom objects, and any other object that supports record types, you can call `create_record_type` directly without a business process — they don't use them.
+
+### Reordering picklist values
+
+The display order of any picklist (standard or custom) is a single global property of the field — Salesforce has no per-record-type, per-page-layout, or per-business-process ordering. To change it, call `reorder_picklist_values` with the `order` you want (list all values, or just the ones you want moved to the front — the rest keep their relative order after them). Every value named must already exist; create new ones with `add_picklist_values` first. For custom fields this also turns off alphabetical auto-sorting so the explicit order sticks. Because the change is org-wide, confirm with the user before reordering.
 
 ### "Which profiles have access to record type X?"
 Use the `read_profile_record_type_visibility` tool to check visibility per profile.
