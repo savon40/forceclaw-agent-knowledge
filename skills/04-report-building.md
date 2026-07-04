@@ -5,6 +5,7 @@
 - **Create reports** via the `create_report` tool (Metadata API)
 - **Edit existing reports** via the `update_report` tool (Metadata API — reads existing metadata, merges your changes, writes back)
 - **Move reports** between folders via the `move_report` tool
+- **Create report folders** via the `create_report_folder` tool (Metadata API — `ReportFolder` type): public read-only, public read-write, or hidden
 - **Create dashboards** via the `create_dashboard` tool
 - **Create custom report types** via the `create_custom_report_type` tool (Metadata API) — required when the user wants a report that joins objects no standard report type covers
 - **Enable reporting on a custom object** via the `enable_object_reporting` tool (sets "Allow Reports") — `create_report` also calls this automatically when an object has reporting turned off
@@ -83,6 +84,20 @@ Every report runs on a Report Type. Salesforce ships standard report types for s
 - **"CRTs are Setup-UI-only and can't be deployed via Metadata API."** False. The metadata type is `ReportType` (sometimes called `CustomReportType`); the `create_custom_report_type` tool deploys it. If you find yourself telling the user a CRT requires manual Setup work, you are about to hallucinate — call `create_custom_report_type` instead.
 - **"I'll query existing CRTs with `SELECT ... FROM ReportType`."** Wrong API. `ReportType` is not an SObject and cannot be queried with standard SOQL. There is no clean Tooling API equivalent either. Don't bother checking first — call `create_custom_report_type` directly. If a CRT with that developer_name already exists, the tool returns a duplicate-name response and the report build can proceed.
 - **"`CustomObject.Label` will tell me what's there."** The Tooling API `CustomObject` entity uses `MasterLabel`, not `Label`. But again, you don't need to query — just call the create tool.
+
+## Report folders — create the folder BEFORE placing or moving a report into it
+
+Report folders are **not** created automatically. `create_report` falls back to Public Reports (`unfiled$public`) when the folder it's given doesn't exist, and `move_report` errors out. So when a user asks to move or create a report **into a folder that may not exist** — e.g. *"move FC_Test_LabSummary into a folder called 'FC_Test_Reports', create it if it doesn't exist, public read-only"* — do this in order:
+
+1. Call `create_report_folder` with `folder_name: "FC_Test_Reports"` and `access: "public read-only"`. Creating a folder that already exists is treated as success, so it's always safe to call first — you don't need to check whether it exists.
+2. Then call `move_report` with `target_folder` set to the new folder's developer name (for `FC_Test_Reports`, the developer name is `FC_Test_Reports`).
+
+`create_report_folder` arguments:
+- `folder_name` — the folder name; becomes the developer/API name (spaces/punctuation → underscores, capped at 40 chars).
+- `folder_label` — optional display label (defaults to `folder_name`).
+- `access` — plain language: `"public read-only"` (default — everyone views, owner/admins edit), `"public read-write"` (everyone views and edits), or `"hidden"`/`"private"` (owner and admins only).
+
+For `create_report`, if the user wants a brand-new report to land in a specific custom folder, create the folder first the same way, then pass its developer name as `folder_name`.
 
 ## Editing an existing report — use `update_report`, NOT `create_report`
 
