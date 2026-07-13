@@ -352,6 +352,7 @@ Get the shapes below right on the first call — these are the fields models mos
 - **Manager / hierarchy approver:** set `nextAutomatedApprover` to `{ "useApproverFieldOfRecordOwner": true, "userHierarchyField": "Manager" }`. BOTH keys are required together — `useApproverFieldOfRecordOwner: true` without `userHierarchyField` fails with "Required field is missing: userHierarchyField". Do NOT put a `type` key here.
 - **Step approver:** `assignedApprover` is `{ "approver": [{ "type": "userHierarchyField" }] }` (or `type` `user` with a `name`, `queue`, `role`, etc.). Do NOT put a `type: "Automatically"` on `assignedApprover` itself.
 - **Multiple approvers:** `whenMultipleApprovers` (`FirstResponse` or `Unanimous`) goes INSIDE `assignedApprover`, not on the step.
+- **Allowed submitters:** an approval process MUST have at least one submitter or Salesforce rejects it with "The approval process requires at least one allowed submitter." Set `allowedSubmitters` to a list, e.g. `[{ "type": "owner" }]` (record owner) or `[{ "type": "role", "submitter": "Tier_1_Agent" }]`. Valid `type` values include `owner`, `creator`, `user` (+ `submitter` = username), `role`, `roleSubordinates`, `group`. If you don't specify it the tool defaults to the record owner (`owner`), but prefer to set it explicitly to whoever the user described as the submitter.
 - **Don't send** `stepNumber` (inferred from array order) or invented fields like `submissionRule`.
 
 Minimal working example (manager approval, field update on approval):
