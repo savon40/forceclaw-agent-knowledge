@@ -620,17 +620,13 @@ If you used `execute_anonymous_apex` to create queues earlier in the same conver
 
 ---
 
-## CRITICAL: ALWAYS add fault paths to every DML and callout element
+## Fault paths — ONLY when the account's Custom Instructions require them
 
-Every `recordCreates`, `recordUpdates`, `recordDeletes`, `actionCalls` (email, Slack, Apex invocable, subflow), and `recordLookups` MUST have a `faultConnector` pointing to an error-handling element. No exceptions. This rule applies to EVERY flow you build or update.
+Do NOT add fault paths by default. Add them **only if this account's Custom Instructions ask for them** (e.g. "always include fault paths in flows" / "email X on flow failure"). If the Custom Instructions say nothing about fault paths, build the flow WITHOUT any fault connectors or error handler — a fault path the user didn't ask for is unwanted clutter.
 
-**Why:**
-- Without a fault path, any DML or callout failure throws an unhandled exception — the flow silently errors out mid-execution and leaves data in an inconsistent state
-- The user will see cryptic flow error emails from Salesforce with no context about what happened
-- Downstream logic never runs, but the record has been partially modified — hard to debug and harder to undo
-- In production, unhandled flow errors become noisy enough that flows get deactivated in frustration
+**When the Custom Instructions DO require fault paths**, then every `recordCreates`, `recordUpdates`, `recordDeletes`, `actionCalls` (email, Slack, Apex invocable, subflow), and `recordLookups` must have a `faultConnector` pointing to a single shared error-handling element — no exceptions within that flow. (ForceClaw also enforces this server-side: if the rule is set and a deployed flow is still missing a fault path, the tool result tells you to add it before you're done.)
 
-**Minimum pattern — email the user who was running the flow when something breaks:**
+**Minimum pattern — send the error email to the address specified in the Custom Instructions:**
 
 ```json
 {
@@ -685,17 +681,16 @@ Then on EVERY DML / callout element, add the fault connector:
 
 ### Where to send fault emails
 
-- **If the account has custom instructions specifying a recipient** (e.g. admin email for flow errors), use that address
-- Otherwise, default to the record owner's email via a User lookup (Get Records on User filtered by Id = `$Record.OwnerId`, then add `{!Get_Owner.Email}` to the ErrorRecipients collection)
-- **NEVER hardcode a specific email address unless the account's custom instructions explicitly provide one** — and even then, the address itself should be treated as configuration, not as "the model's choice"
+- Use the **exact recipient the account's Custom Instructions specify** (that is the whole point — the admin chose it). Read the address out of the Custom Instructions and use it verbatim.
+- **NEVER use `$User.Email`, the record owner, or any hardcoded/guessed address.** If the Custom Instructions require fault paths but don't name a recipient, ask the user who the error emails should go to rather than inventing one.
 
 ### Populating the ErrorRecipients collection
 
 Use an `Assignment` element with operator `Add` to push the email onto the collection variable before the error path runs. See the emailSimple canonical pattern in this document.
 
-### When fault paths CAN be omitted
+### Before Save flows never get fault paths
 
-Almost never. The only legitimate exception is a Before Save flow that only updates `$Record` — because Before Save updates happen in-memory and Salesforce rolls back the whole save on exception automatically. For everything else (After Save DML, any action call, any record lookup that might fail), always include a fault path.
+Even when the account requires fault paths, a Before Save flow that updates `$Record` cannot have them — Before Save updates happen in-memory, can't send email, and Salesforce rolls back the whole save on exception automatically. Never add fault connectors to a Before Save flow.
 
 ---
 
@@ -1636,12 +1631,12 @@ Every Flow you build or modify must pass these checks:
 - **Filter collections** instead of querying again — use collection filters when you already have the data
 - **Limit subflow nesting depth** — max 50 levels allowed, but keep to 3-4 for maintainability
 
-## Fault paths — ALWAYS add to DML operations
+## Fault paths — only when the account's Custom Instructions require them
 
-Every `recordCreates`, `recordUpdates`, and `recordDeletes` element MUST have a fault connector. Without fault paths, DML failures cause unhandled exceptions that are hard to debug.
+Do NOT add fault paths by default. Add them only if this account's Custom Instructions ask for them (see the "Fault paths — ONLY when the account's Custom Instructions require them" section above for the full rule and recipient handling). When the account does NOT require fault paths, build DML elements with no `faultConnector`.
 
-### Pattern: Fault path with error logging
-Add a `faultConnector` to every DML element that points to an error-handling element:
+### Pattern (when required): fault path with error handling
+When the account requires fault paths, add a `faultConnector` to every DML element that points to a single shared error-handling element:
 
 ```json
 {
