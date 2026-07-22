@@ -666,7 +666,7 @@ Some admins hide empty fields. This is a Dynamic Forms visibility rule (e.g., "o
 4. If no FlexiPage or Dynamic Forms, check the page layout
 5. Tell the user exactly what you found — "The field is on the page layout but NOT on the Lightning Record Page" or "The field is missing from both"
 
-**You CAN read FlexiPages** via the Tooling API `query_tooling` tool. You CANNOT currently modify them — if a field needs to be added to a FlexiPage, tell the user to do it in the Lightning App Builder.
+**You CAN read FlexiPages** via the Tooling API `query_tooling` tool, and **you CAN modify them** via `update_flexipage` (add/remove components, Dynamic Forms field sections, and fields; set component visibility) and `create_flexipage`. To add a field to a FlexiPage's Dynamic Forms section, use `update_flexipage` action `add_field` (pass the field API name) — do NOT send the user to the Lightning App Builder. See skill 14 for the full FlexiPage write workflow.
 
 ---
 
