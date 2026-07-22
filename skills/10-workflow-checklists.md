@@ -440,7 +440,7 @@ When a user asks why a field isn't visible on a record page, you MUST check ALL 
 - If FlexiPages of type `RecordPage` exist, the object likely uses Dynamic Forms
 - Read the FlexiPage metadata: `SELECT Id, DeveloperName, Metadata FROM FlexiPage WHERE DeveloperName = '{PageName}' LIMIT 1` via **query_tooling**
 - Check if the field appears in the FlexiPage's `Metadata` → `flexiPageRegions` → `itemInstances` → `fieldItem`
-- If the field is NOT on the FlexiPage, tell the user: "This record uses a Lightning Record Page with Dynamic Forms. The field needs to be added to the Lightning page in the Lightning App Builder — page layout changes won't affect it."
+- If the field is NOT on the FlexiPage, add it with `update_flexipage` action `add_field` (target the relevant Dynamic Forms section by label; pass the field API name). Explain that this record uses Dynamic Forms, so a page-layout change alone won't surface the field. Only fall back to manual Lightning App Builder steps if the write tool errors.
 
 ### Step 4: Check the page layout
 - Use `list_page_layouts` and `read_page_layout` to see if the field is on the layout

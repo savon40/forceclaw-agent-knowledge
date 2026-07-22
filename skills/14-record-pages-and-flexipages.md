@@ -21,13 +21,19 @@ When a user asks *"I built it / deployed it / activated it, why isn't it showing
 - Compact layouts: `update_compact_layout` — upserts: creates the layout when it doesn't exist yet (never tell the user creation is impossible). A compact layout has **no visible effect until it is the object's assigned primary compact layout** — pass `set_as_default: true` when the user expects to see the change (highlights panel / mobile header). The assignment lives on the **CustomObject**, not the layout, so when committing to Git after assigning, retrieve both the `CompactLayout` and the `CustomObject`.
 - Quick actions: `create_quick_action`
 
-### Not yet built (roadmap — `Bot_SF_Capabilities.md`)
-- `update_flexipage` — modify Lightning record page regions, components, visibility filters
-- `add_component_to_flexipage` — add an LWC, Screen Flow, field section, or related list to a FlexiPage region
-- `set_flexipage_as_default` — set a FlexiPage as the org default for an object
-- Dynamic Forms field section management
+### FlexiPage write (Lightning record pages)
+- `create_flexipage` — create a new Lightning record page for an object from the standard record-page template (created **inactive**; activate separately). Optionally seed a Dynamic Forms field section in the main region in the same call.
+- `update_flexipage` — modify an existing Lightning record page. Actions:
+  - `read` — return the page structure (regions, components, field sections and their fields). **Always `read` first** before any write so you target real region names.
+  - `add_component` / `remove_component` — add or remove an LWC / standard component in a region.
+  - `add_field_section` / `remove_field_section` — add or remove a Dynamic Forms field section (facet-based; supports multiple columns).
+  - `add_field` / `remove_field` — add or remove a field within a Dynamic Forms field section.
+  - `set_visibility` — attach component visibility rules (filters).
+- `activate_flexipage` — assign a FlexiPage as the default for an object (per app, and/or per profile / record type / form factor).
 
-If the user asks for a FlexiPage write, **diagnose first using read-only tools**, explain what's needed, and tell them the write step isn't built yet. Do not pretend to do it. Do not deploy a payload that hasn't been requested.
+When the user asks for a FlexiPage write, **`read` the page first** to see its real regions and sections, then make the requested change with the tool above. Pass field **API names** (e.g. `Billing_Contact__c`), not labels. After a successful write, offer to commit to Git via `retrieve_metadata` + `commit_and_open_pr`. Do not deploy a payload that hasn't been requested.
+
+**Remaining gap:** a true org-wide default with no app override (unreliable Metadata API support) — everything else above is built.
 
 ## Investigation order — "I deployed it, why isn't it visible?"
 
@@ -127,7 +133,7 @@ Dynamic Forms field sections, the standard Record Detail panel, and page layout 
 | Fields are read-only despite FLS being correct | Custom LWC rendering the field, not standard `lightning-record-form` |
 | Required asterisks missing | LWC bypassed `lightning-record-edit-form` and didn't recreate the required-field UX |
 
-Adding a field via `update_page_layout` will **not** show up if the FlexiPage has switched that section to Dynamic Forms — the field has to be added to the FlexiPage's field section instead. (FlexiPage write tools are roadmap.)
+Adding a field via `update_page_layout` will **not** show up if the FlexiPage has switched that section to Dynamic Forms — the field has to be added to the FlexiPage's field section instead, using `update_flexipage` action `add_field`.
 
 ## Mobile record pages
 
@@ -164,10 +170,10 @@ Practical implications:
 |---|---|---|
 | Quick action configured but not visible on desktop | Page layout, Dynamic Actions, overflow, or permissions disagree | Walk the Quick Action Visibility Matrix top to bottom |
 | Quick action visible on desktop but not mobile | Phone form factor, Dynamic Actions, layout action list, or permissions differ from desktop | Inspect component target form factors, layout action list, Dynamic Actions, activation, permissions — all separately for phone |
-| Field added to layout but doesn't show up on the page | FlexiPage has switched that section to Dynamic Forms | Add the field to the FlexiPage's field section instead (roadmap) |
+| Field added to layout but doesn't show up on the page | FlexiPage has switched that section to Dynamic Forms | Add the field to the FlexiPage's field section instead — `update_flexipage` action `add_field` |
 | New Lightning page set as org default but only some users see it | More-specific App+Profile+RecordType assignments still pointing at the old page | Find and clear/update the more-specific assignments |
 | Dynamic Forms field shows for some users, not others | FLS or custom permission gating | Check `FieldPermissions` for the user's permission sets |
-| Component deployed clean but isn't on any page | Component metadata is correct but no FlexiPage references it | Add a `FlexiPageComponentInstance` (roadmap); for now, diagnose and report |
+| Component deployed clean but isn't on any page | Component metadata is correct but no FlexiPage references it | Add it to a page with `update_flexipage` action `add_component` |
 | Aura template region "missing" after FlexiPage edit | Region name changed in the template | Restore the region name or update the FlexiPage to use the new name |
 | Related list refresh not happening after a record save | Custom LWC list, no explicit refresh logic | Add `refreshApex(this.wiredResult)` after the save completes |
 
