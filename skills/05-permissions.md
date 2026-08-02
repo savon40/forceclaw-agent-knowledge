@@ -174,6 +174,30 @@ AND PermissionsEdit = false
 ORDER BY Field
 ```
 
+### Why can one user see a field on a record but another can't?
+
+Field visibility on a record's **detail page** has TWO independent gates. Check BOTH — do not stop at field-level security:
+
+1. **Field-Level Security (FLS)** — from the user's profile + permission sets. If FLS Read is off, the field is invisible everywhere (record page, list views, reports, API). Most common cause.
+2. **Page layout assignment** — from the user's profile + the record's record type. Even with FLS granted, the field only appears on the detail page if it is placed on the layout that this profile + record type is assigned. Two users on **different profiles** (or different record types) can be assigned **different layouts**, so the field can be on one user's layout and missing from the other's *with identical FLS*.
+
+If the org uses **Dynamic Forms / Lightning record pages**, the fields shown come from the FlexiPage (record page), not the classic layout — check the record page's field components instead (see the record-pages skill).
+
+**How to investigate (two users, e.g. "Nick can't see Credit Score, Scott can"):**
+
+1. Get both users' profile, record type, and permission sets:
+```sql
+SELECT Id, Name, Profile.Name,
+  (SELECT PermissionSet.Label FROM PermissionSetAssignments WHERE PermissionSet.IsOwnedByProfile = false)
+FROM User WHERE Name IN ('Nick Reed', 'Scott Chen')
+```
+2. **Compare FLS** for the field on each user's profile: call `read_profile` with `object_name` = the object and `section` = `field_permissions` (and `read_permission_set` for any assigned sets). If one is `Readable=false`, that is the answer — stop here.
+3. **If FLS is the same / granted for both, compare layout assignment:** call `read_profile` with `object_name` and `section` = `layout_assignments` for each profile. Note the assigned layout per record type.
+4. **Confirm the field is on each layout:** run `read_page_layout` on each assigned layout and check whether the field is actually placed on it. A field present on Scott's layout but absent from Nick's explains the difference.
+5. **Record type matters:** layout assignment is per (profile, record type). If the two users' records use different record types, they can get different layouts even on the same profile.
+
+Common outcome: same FLS, different profile → different assigned page layout → the field is only on one of them.
+
 ## Sharing rules
 
 ### List sharing rules on an object (via Tooling API)
@@ -236,7 +260,8 @@ In sandbox and developer orgs, you can create and modify permission sets using t
 ## Tips for permission questions
 
 - When a user asks "who can see X", remember that access is **additive** — check profiles AND permission sets AND sharing rules
-- When debugging "why can't I do X", work top-down: Object permissions → Field permissions → Record sharing → Validation rules
+- When debugging "why can't I do X", work top-down: Object permissions → Field permissions (FLS) → **Page layout assignment / Lightning record page** (for "can't SEE a field on the record page") → Record sharing → Validation rules
+- "Can't SEE a field on the record page" is NOT always FLS. If FLS is granted equally, compare each user's **page layout assignment** (`read_profile` section `layout_assignments`) and whether the field is on that layout (`read_page_layout`). Different profiles are often assigned different layouts.
 - **Validation rules can block edits even if permissions allow them** — always check validation rules if the user says "I have access but can't save"
 - Use `describe_object` to see if a field is required, unique, or has other constraints
 

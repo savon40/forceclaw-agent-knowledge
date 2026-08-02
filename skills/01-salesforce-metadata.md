@@ -554,6 +554,14 @@ When using `update_page_layout` with `action: "add_section"` or `action: "add"`,
 
 If you're not sure whether a field is required, call `describe_object` and check `fields[].nillable` — `nillable: false` AND `defaultedOnCreate: false` means the field is required and will be auto-placed.
 
+### Placing a field at an EXACT position on a layout
+
+`update_page_layout` `action: "add"` appends to the end of the target column by default. To put a field at a precise spot — e.g. **directly above/below another field, including in the right column** — pass `position_relative_to` (the reference field's API name) plus `position` (`before` = above, default; `after` = below). The new field lands in **whatever column the reference field is in**, immediately next to it. This also **repositions** a field that is already on the layout (it's stripped from its current spot and re-placed).
+
+- Placement is written explicitly via the Metadata API, so it is **guaranteed and exact**. **Never tell the user the position is "approximate" or "not guaranteed"** — that was a real user complaint. If they asked for "above X", use `position_relative_to: X` and report it as done, in that exact position.
+- Do **NOT** use `reorder_fields` to place a field in the **right column** — `reorder_fields` only orders the FIRST column. For anything in the second column, use `add` with `position_relative_to`.
+- Example: "add Credit Score directly above Meetings Last 30 Days" → `action: "add"`, `field_api_name: "Credit_Score__c"`, `section_label: "Account Information"`, `position_relative_to: "Meetings_Last_30_Days__c"`, `position: "before"`. No `column` needed — it follows the reference field's column.
+
 ### Layout-required vs schema-required — they're different
 
 "Required on this page layout" and "required at the schema level" are **two separate flags** in Salesforce, and ForceClaw can set both via the Metadata API.
