@@ -1,5 +1,30 @@
 # Permissions & Access
 
+
+## Investigating "why can X see this but Y can't"
+
+**Start with `get_user_access`.** Pass every user the question mentions in one call,
+plus the object and (if relevant) the field:
+
+```
+get_user_access(users: ["Scott Chen", "Nick Reed"], object_name: "Account", field_name: "Credit_Score__c")
+```
+
+It returns, per user: profile, every permission set that grants the field (including
+ones assigned through a permission set group), the effective read/edit result, and an
+explicit DIFFERENCE line.
+
+Do NOT hand-assemble this from `User` + `PermissionSetAssignment` + `FieldPermissions`
+queries. Those rows are keyed by 18-character Ids, and matching them back to the right
+user by eye is where wrong answers come from — including confidently stating that
+someone lacks a permission set they actually have.
+
+**If the tool reports no difference in field-level security**, that is the real finding:
+say so, and check the next gates instead of re-running permission queries —
+the page layout assigned to their profile (`read_page_layout`), the Lightning record
+page and its component visibility rules (`update_flexipage` with action `read`),
+record-level sharing, or a different record type.
+
 ## CRITICAL: Field-Level Security vs Object Permissions
 
 **Object CRUD permissions (Create, Read, Edit, Delete, View All, Modify All) do NOT grant access to individual fields.**
