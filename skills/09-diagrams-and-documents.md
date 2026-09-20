@@ -44,6 +44,11 @@ flowchart LR
     end
 ```
 
+Colour means one thing: **green = has access / allowed / nothing blocking**, **red =
+blocked / no access**. Never colour a positive result red (a node saying "Should see
+field ✓" in red contradicts itself). If two lanes reach the same outcome, colour them
+the same — the point of the picture is where they diverge.
+
 Use `flowchart LR` for access paths: each user's lane then stacks vertically and the
 image stays readable in Slack. `flowchart TD` puts the lanes side by side and produces a
 very wide, unreadable strip.
@@ -79,6 +84,17 @@ flowchart TD
 ```
 
 ## Mermaid Syntax Patterns for Salesforce
+
+### ERD sizing (enforced)
+
+An ERD of everything related to an object is unreadable in a chat thread. The tool
+rejects diagrams over these limits, so aim inside them from the start:
+
+- **12 entities maximum.** For a hub object like Opportunity, pick the ones that matter
+  to the question, or split into two diagrams: "parent objects" and "child objects".
+- **Field lists on the focus object only** (at most 8-10 fields — keys plus the fields
+  being discussed). Every other entity is a plain box.
+- Relationship labels are short verbs: `has`, `owns`, `contains`.
 
 ### ERD — Object Relationships
 
