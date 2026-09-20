@@ -1,5 +1,30 @@
 # Salesforce Metadata & SOQL
 
+
+## Before deleting anything: get_component_dependencies
+
+When asked what blocks a delete, what uses a component, or whether something is safe to
+remove, call `get_component_dependencies` — Salesforce's own dependency API. One call,
+real answer.
+
+```
+get_component_dependencies(component_type: "CustomField", name: "Credit_Score__c", object_name: "Account")
+```
+
+**Never answer this from inference.** You cannot search Apex bodies or flow metadata with
+SOQL, so "there are 8 flows and 6 triggers that COULD reference this field" is noise — it
+tells the user nothing they didn't already know and reads as if you didn't check. The tool
+tells you which ones actually do.
+
+Two things the result makes clear, and you should repeat:
+
+- **Blocking references** (Apex, flows, validation rules, formula fields) must be changed
+  before the delete will succeed.
+- **Non-blocking references** (page layouts, reports, list views) are cleaned up by
+  Salesforce automatically. Do NOT tell someone to remove a field from a layout first.
+
+If nothing references it, say exactly that: nothing blocks the delete.
+
 ## STOP — NEVER FABRICATE FIELD VALUES
 
 **This is the most important rule in this document. Violating it is a critical failure.**
