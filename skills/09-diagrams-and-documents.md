@@ -150,22 +150,37 @@ flowchart TD
     G --> B
 ```
 
-### Flowchart — Automation Chain
+### Automation chain — what actually runs on this object
 
-Show how triggers, flows, and validation rules interact:
+Name the org's REAL components at each stage, in execution order. A generic
+order-of-execution diagram tells the user nothing they couldn't get from Salesforce
+docs — the value is seeing their own flows and triggers in the order they fire.
 
 ```mermaid
 flowchart TD
-    A[Record Save] --> B[Validation Rules]
-    B -->|Pass| C[Before Triggers]
-    C --> D[After Triggers]
-    D --> E[Assignment Rules]
-    E --> F[Auto-Response Rules]
-    F --> G[Workflow Rules]
-    G --> H[Process Builder / Flows]
-    H --> I[Commit to Database]
-    B -->|Fail| J[Error Message]
+    Save[Account saved] --> VR[Validation rules: 5 active]
+    VR --> BF[Before-save flows]
+    BF --> BF1[Account_Before_Insert_Update]
+    BF1 --> BT[Before triggers]
+    BT --> BT1[AccountTrigger]
+    BT1 --> AT[After triggers]
+    AT --> AT1[LogAccountChange / dc3AccountTrigger]
+    AT1 --> AF[After-save flows]
+    AF --> AF1[Account_Welcome_Email - create only]
+    AF1 --> Done[Committed]
 ```
+
+Rules:
+
+- **Name the components, don't count them.** "Before-save flows: Account_Before_Insert_Update,
+  AccountStatusTypeFlow" is useful; "Before-Save Flows — 4 flows" is not: the user already
+  knows there are flows, they want to know WHICH and in what order. Name up to 3 per stage
+  and add "+N more" if there are others.
+- **Include only stages that exist in this org.** Don't draw "Workflow Rules" or
+  "Assignment Rules" boxes when there are none — an empty stage is noise.
+- Group when a stage has several components (`LogAccountChange / dc3AccountTrigger`),
+  or list the 2-3 that matter to the question. Stay inside the 18-node limit.
+- Note the trigger condition where it matters ("create only", "on update").
 
 ### Sequence Diagram — Integration Flow
 
