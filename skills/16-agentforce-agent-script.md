@@ -166,6 +166,10 @@ These come from a production agent that was hardened through testing. Follow all
 11. **Parenthesise mixed `and` / `or`.** `A and B or C` is evaluated as `(A and B) or C`. Write `A and (B or C)` when that is what you mean.
 12. **Never fabricate.** `system.instructions` must say to use only data returned by actions, templates, or prior answers, and never invent record numbers, IDs, figures, steps, or links.
 
+## Explaining an existing agent
+
+`retrieve_agent` returns a lot of detail. Don't paste it back. Reply inline with a short summary — purpose, topics/subagents, the action count from the **Action index** (count agent-level actions separately), and the 3–5 most important guardrails — within the normal reply length. If the user wants the full breakdown (every instruction and action), deliver it with `generate_document` (format `md`). Only state what the tool output says: don't add example values (e.g. category names) that aren't in it.
+
 ## Review checklist (for "review my agent" or before handing over a script)
 
 - Every `run @actions.X` has a definition in that subagent's `actions:`; every `@variables.x` is declared; every `@subagent.x` exists.
