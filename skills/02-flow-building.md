@@ -704,6 +704,7 @@ Even when the account requires fault paths, a Before Save flow that updates `$Re
 | **Autolaunched Flow** | `AutoLaunchedFlow` | *(none)* | Background processing, invoked by other automation or Apex |
 | **Scheduled Flow** | `AutoLaunchedFlow` | `Scheduled` | Runs on a schedule against a set of records |
 | **Platform Event-Triggered** | `AutoLaunchedFlow` | `PlatformEvent` | Runs when a platform event is published |
+| **Prompt Flow** | `PromptFlow` | `Capability` | Feeds data into a Prompt Builder prompt template (merge field `{!$Flow:<Name>.Prompt}`). Build with `flow_xml` — the structure (capability start, `$Input.objectToSummarize`, `AddPromptInstructions` → `$Output.Prompt`) is in `17-agentforce-prompts-and-actions.md`. |
 
 ## Building Screen Flows
 

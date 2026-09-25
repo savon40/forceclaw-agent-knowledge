@@ -14,7 +14,7 @@ Building or reviewing the pieces an Agentforce agent calls: **prompt templates**
 | Create a NEW prompt template (sandbox) | `create_prompt_template` — see below. Activates it by default. Use `validate_only: true` to check it first. |
 | Activate an existing prompt template (sandbox) | `activate_prompt_template` (latest version, or a given `version`) |
 | **Change an existing prompt template** | **Not available yet.** Give the user the new prompt text to paste into Prompt Builder. |
-| **Create a Prompt Flow** | **Not available yet.** Write the Flow design with `generate_document` for the user to build in Flow Builder, and say it isn't deployed. |
+| Create a Prompt Flow (sandbox) | `create_flow` with `flow_xml` (processType `PromptFlow`), `activate: true` — see Prompt Flows below. Build the flow **before** the template that uses it. |
 
 ## Prompt templates (`GenAiPromptTemplate`)
 
@@ -80,6 +80,7 @@ A data provider is declared per version:
 - The tool rejects the prompt if the injection guard is missing, a merge field names an unknown input, or a namespace isn't supported — fix exactly what it lists and call again.
 - A `{!$Flow:X.Prompt}` needs Prompt Flow `X` to already exist and be active.
 - Model defaults to the one the org's existing templates use; only set `model` if the user asks.
+- To see which templates already exist, use `check_agentforce_readiness` (or `retrieve_metadata`). Don't SOQL `GenAiPromptTemplate` — it isn't queryable in every org.
 - It creates **new** templates only. It hasn't been test-run — tell the user to preview it in Prompt Builder against a real record.
 
 ### Published vs active
@@ -129,6 +130,9 @@ A Prompt Flow gathers data the snapshot doesn't include (notes, filtered child r
 - Return text with an assignment of `elementSubtype` `AddPromptInstructions` that **adds** to `$Output.Prompt`.
 - Always handle "nothing found" with a clear fixed sentence ("No case comments available"), so the template never gets an empty section.
 - The template references it as provider `flow://<FlowName>` and merge field `{!$Flow:<FlowName>.Prompt}`.
+- **Order and activation:** create the Prompt Flow first with `create_flow` (`flow_xml`, `activate: true`), then the template. A missing or inactive flow makes the template deploy fail ("can't find the related records").
+- The flow's start capability must match the template: `PromptTemplateType://einstein_gpt__recordSummary` with input `objectToSummarize` of the template's object for record-summary templates.
+- Pattern against `examples/agentforce-actions/Case_Comments_For_Prompt.flow-meta.xml` — it was created through `create_flow`, grounded a template, and its data showed up in the resolved prompt (verified end to end).
 
 ## Invocable Apex for agent actions
 

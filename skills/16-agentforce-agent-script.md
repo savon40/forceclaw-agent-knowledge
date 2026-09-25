@@ -15,12 +15,13 @@ Any request to build, change, review, explain, plan, or troubleshoot a Salesforc
 | Build an autolaunched Flow behind an action (sandbox) | `create_flow` |
 | Create a new prompt template for an action (sandbox) | `create_prompt_template` — created active (see `17-agentforce-prompts-and-actions.md`) |
 | Activate an existing prompt template (sandbox) | `activate_prompt_template` |
-| **Deploy an agent, change an existing prompt template, or create a Prompt Flow** | **Not available yet.** Say so plainly. |
+| Build a Prompt Flow for a template (sandbox) | `create_flow` with `flow_xml`, processType `PromptFlow` (see `17-agentforce-prompts-and-actions.md`) |
+| **Deploy an agent, or change an existing prompt template** | **Not available yet.** Say so plainly. |
 
 When the user asks you to build an agent, you can still deliver real value:
 1. Run `check_agentforce_readiness` and report blockers.
 2. Design the agent (subagents, actions, variables, what backs each action) and get approval.
-3. Build the backing pieces with the tools above (sandbox only): Apex, autolaunched Flows, and prompt templates (`create_prompt_template`). List any Prompt Flows the user must build themselves, with their full design.
+3. Build the backing pieces with the tools above (sandbox only), in dependency order: Apex, autolaunched Flows and Prompt Flows (`create_flow`), then prompt templates (`create_prompt_template`).
 4. Write the Agent Script and deliver it with `generate_document` as a **draft** the user pastes into Agentforce Builder. Say clearly that the agent is **not deployed and not tested**.
 
 Never claim an agent, prompt template, or Prompt Flow was deployed, activated, or tested. In a **production** org, agent building is sandbox-only — build in a sandbox, promote with `validate_deploy_to_production`.
