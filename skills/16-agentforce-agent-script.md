@@ -13,13 +13,15 @@ Any request to build, change, review, explain, plan, or troubleshoot a Salesforc
 | Raw agent XML for Git | `retrieve_metadata` (types `GenAiPlannerBundle`, `GenAiPromptTemplate`, `AiAgentDefinition`, …) |
 | Build the invocable Apex behind an action (sandbox) | `create_apex_class` (+ a test class) |
 | Build an autolaunched Flow behind an action (sandbox) | `create_flow` |
-| **Deploy an agent, a prompt template, or a Prompt Flow** | **Not available yet.** Say so plainly. |
+| Create a new prompt template for an action (sandbox) | `create_prompt_template` — created active (see `17-agentforce-prompts-and-actions.md`) |
+| Activate an existing prompt template (sandbox) | `activate_prompt_template` |
+| **Deploy an agent, change an existing prompt template, or create a Prompt Flow** | **Not available yet.** Say so plainly. |
 
 When the user asks you to build an agent, you can still deliver real value:
 1. Run `check_agentforce_readiness` and report blockers.
 2. Design the agent (subagents, actions, variables, what backs each action) and get approval.
-3. Build the backing Apex and autolaunched Flows with the tools above (sandbox only).
-4. Write the Agent Script and deliver it with `generate_document` as a **draft** the user pastes into Agentforce Builder. Say clearly that it is **not deployed and not tested**, and list the prompt templates / Prompt Flows they must create in Prompt Builder (give their full content).
+3. Build the backing pieces with the tools above (sandbox only): Apex, autolaunched Flows, and prompt templates (`create_prompt_template`). List any Prompt Flows the user must build themselves, with their full design.
+4. Write the Agent Script and deliver it with `generate_document` as a **draft** the user pastes into Agentforce Builder. Say clearly that the agent is **not deployed and not tested**.
 
 Never claim an agent, prompt template, or Prompt Flow was deployed, activated, or tested. In a **production** org, agent building is sandbox-only — build in a sandbox, promote with `validate_deploy_to_production`.
 

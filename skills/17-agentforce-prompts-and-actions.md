@@ -11,7 +11,10 @@ Building or reviewing the pieces an Agentforce agent calls: **prompt templates**
 | Invocable Apex for an action | `create_apex_class` (sandbox) — follow the pattern below, always with a test class |
 | Autolaunched Flow for an action | `create_flow` (sandbox) |
 | Read an existing prompt template | `retrieve_metadata` with type `GenAiPromptTemplate` |
-| **Create/update a prompt template or a Prompt Flow** | **Not available yet.** Write the full template text / Flow design with `generate_document` for the user to create in Prompt Builder / Flow Builder, and say it isn't deployed. |
+| Create a NEW prompt template (sandbox) | `create_prompt_template` — see below. Activates it by default. Use `validate_only: true` to check it first. |
+| Activate an existing prompt template (sandbox) | `activate_prompt_template` (latest version, or a given `version`) |
+| **Change an existing prompt template** | **Not available yet.** Give the user the new prompt text to paste into Prompt Builder. |
+| **Create a Prompt Flow** | **Not available yet.** Write the Flow design with `generate_document` for the user to build in Flow Builder, and say it isn't deployed. |
 
 ## Prompt templates (`GenAiPromptTemplate`)
 
@@ -68,6 +71,20 @@ A data provider is declared per version:
 ```
 
 **Retrievers:** ForceClaw does not build Data Cloud search indexes or retrievers. Use ones that already exist; if a use case needs one that doesn't, tell the user it's a Data Cloud setup task.
+
+### Creating one with `create_prompt_template`
+
+- `template_type`: `record_summary` (set `related_object`, e.g. `Case`; reference the record as `Case` in merge fields) or `flex` (declare `inputs`: `{name, type: text|record, object}`).
+- `content` is **plain text, not XML**: write HTML tags as `<p>`, `<strong>`, `<ul>` — never `&lt;p&gt;`. (The example `.xml` files show them escaped only because they're XML.)
+- Put the whole prompt in `content`. **Don't write data providers** — the tool builds them from your merge fields (`$RecordSnapshot`, `$RelatedList`, `$Flow`, `$EinsteinSearch`). Only retrievers need an extra `retrievers` entry with `search_text`.
+- The tool rejects the prompt if the injection guard is missing, a merge field names an unknown input, or a namespace isn't supported — fix exactly what it lists and call again.
+- A `{!$Flow:X.Prompt}` needs Prompt Flow `X` to already exist and be active.
+- Model defaults to the one the org's existing templates use; only set `model` if the user asks.
+- It creates **new** templates only. It hasn't been test-run — tell the user to preview it in Prompt Builder against a real record.
+
+### Published vs active
+
+A template **version** is `Published` (saved and usable); the **template** is active only when its `activeVersionIdentifier` points at one of those versions. A template can be published and still **inactive** — Prompt Builder shows it as inactive and agents/flows can't use it. `create_prompt_template` activates by default; use `activate_prompt_template` for existing templates. Never tell a user a template is live or active unless a tool reported that it was activated.
 
 ### Writing the prompt — required rules
 
