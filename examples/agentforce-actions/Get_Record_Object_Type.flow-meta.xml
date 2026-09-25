@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AUTOLAUNCHED FLOW example used as an agent action (target
+  "flow://Get_Record_Object_Type"). Deterministic helper: classifies a record
+  Id by its 3-character key prefix so the agent never asks the LLM "what kind
+  of record is this?" (authoring rule 1). Input recordId, output objectType
+  (Case, Account, or Other). Always returns a value — never faults.
+-->
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>65.0</apiVersion>
+    <assignments>
+        <name>Set_Account</name>
+        <label>Set Account</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>objectType</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <stringValue>Account</stringValue>
+            </value>
+        </assignmentItems>
+    </assignments>
+    <assignments>
+        <name>Set_Case</name>
+        <label>Set Case</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>objectType</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <stringValue>Case</stringValue>
+            </value>
+        </assignmentItems>
+    </assignments>
+    <assignments>
+        <name>Set_Other</name>
+        <label>Set Other</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>objectType</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <stringValue>Other</stringValue>
+            </value>
+        </assignmentItems>
+    </assignments>
+    <decisions>
+        <name>Which_Object</name>
+        <label>Which Object?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Set_Other</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Other</defaultConnectorLabel>
+        <rules>
+            <name>Is_Case</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>fxKeyPrefix</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>500</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Set_Case</targetReference>
+            </connector>
+            <label>Is Case</label>
+        </rules>
+        <rules>
+            <name>Is_Account</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>fxKeyPrefix</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>001</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Set_Account</targetReference>
+            </connector>
+            <label>Is Account</label>
+        </rules>
+    </decisions>
+    <description>Returns Case, Account, or Other for a record Id, from its key prefix. Used by agents to classify the record on screen deterministically.</description>
+    <environments>Default</environments>
+    <formulas>
+        <name>fxKeyPrefix</name>
+        <dataType>String</dataType>
+        <expression>LEFT({!recordId}, 3)</expression>
+    </formulas>
+    <interviewLabel>Get Record Object Type {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Get Record Object Type</label>
+    <processType>AutoLaunchedFlow</processType>
+    <start>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Which_Object</targetReference>
+        </connector>
+    </start>
+    <status>Active</status>
+    <variables>
+        <description>Object type of the record: Case, Account, or Other.</description>
+        <name>objectType</name>
+        <dataType>String</dataType>
+        <isCollection>false</isCollection>
+        <isInput>false</isInput>
+        <isOutput>true</isOutput>
+    </variables>
+    <variables>
+        <description>The Salesforce record Id to classify.</description>
+        <name>recordId</name>
+        <dataType>String</dataType>
+        <isCollection>false</isCollection>
+        <isInput>true</isInput>
+        <isOutput>false</isOutput>
+    </variables>
+</Flow>

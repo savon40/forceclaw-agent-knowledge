@@ -1,1 +1,4 @@
 #git ignore
+
+# Customer-specific agent samples (Hologic) — never commit
+examples/agent/

@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PROMPT FLOW example: feeds a Case's comments (newest first) into a
+  recordSummary prompt template. Referenced by Case_Summary_Example as data
+  provider flow://Case_Comments_For_Prompt, merge field
+  {!$Flow:Case_Comments_For_Prompt.Prompt}.
+
+  Pattern:
+    - processType PromptFlow; start triggerType Capability with capabilityTypes
+      naming the template type and its input (objectToSummarize)
+    - read the record via $Input.objectToSummarize
+    - build text, then ONE assignment with elementSubtype AddPromptInstructions
+      that ADDs to $Output.Prompt
+    - always return something: a fixed sentence when nothing is found
+-->
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>65.0</apiVersion>
+    <assignments>
+        <description>Append one formatted comment line.</description>
+        <name>Add_Comment_Line</name>
+        <label>Add Comment Line</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>varCommentText</assignToReference>
+            <operator>Add</operator>
+            <value>
+                <elementReference>tplCommentLine</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Loop_Comments</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <description>Return the collected text to the prompt template.</description>
+        <name>Return_To_Prompt</name>
+        <elementSubtype>AddPromptInstructions</elementSubtype>
+        <label>Return To Prompt</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>$Output.Prompt</assignToReference>
+            <operator>Add</operator>
+            <value>
+                <elementReference>varCommentText</elementReference>
+            </value>
+        </assignmentItems>
+    </assignments>
+    <assignments>
+        <description>Fixed text when the Case has no comments, so the template never gets an empty section.</description>
+        <name>Set_No_Comments</name>
+        <label>Set No Comments</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>varCommentText</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <stringValue>No case comments available.</stringValue>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Return_To_Prompt</targetReference>
+        </connector>
+    </assignments>
+    <decisions>
+        <name>Has_Comments</name>
+        <label>Has Comments?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Set_No_Comments</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>No comments</defaultConnectorLabel>
+        <rules>
+            <name>Comments_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Comments</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Loop_Comments</targetReference>
+            </connector>
+            <label>Comments found</label>
+        </rules>
+    </decisions>
+    <description>Supplies a Case's comments, newest first, to the Case_Summary_Example prompt template.</description>
+    <environments>Default</environments>
+    <interviewLabel>Case Comments For Prompt {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Case Comments For Prompt</label>
+    <loops>
+        <name>Loop_Comments</name>
+        <label>Loop Comments</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <collectionReference>Get_Comments</collectionReference>
+        <iterationOrder>Asc</iterationOrder>
+        <nextValueConnector>
+            <targetReference>Add_Comment_Line</targetReference>
+        </nextValueConnector>
+        <noMoreValuesConnector>
+            <targetReference>Return_To_Prompt</targetReference>
+        </noMoreValuesConnector>
+    </loops>
+    <processType>PromptFlow</processType>
+    <recordLookups>
+        <name>Get_Comments</name>
+        <label>Get Comments</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Has_Comments</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>ParentId</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>recordId</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>false</getFirstRecordOnly>
+        <object>CaseComment</object>
+        <queriedFields>Id</queriedFields>
+        <queriedFields>CommentBody</queriedFields>
+        <queriedFields>CreatedDate</queriedFields>
+        <sortField>CreatedDate</sortField>
+        <sortOrder>Desc</sortOrder>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <start>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <capabilityTypes>
+            <name>PromptTemplateType://einstein_gpt__recordSummary</name>
+            <capabilityName>PromptTemplateType://einstein_gpt__recordSummary</capabilityName>
+            <inputs>
+                <name>objectToSummarize</name>
+                <capabilityInputName>objectToSummarize</capabilityInputName>
+                <dataType>SOBJECT://Case</dataType>
+                <isCollection>false</isCollection>
+            </inputs>
+        </capabilityTypes>
+        <connector>
+            <targetReference>Get_Comments</targetReference>
+        </connector>
+        <triggerType>Capability</triggerType>
+    </start>
+    <status>Active</status>
+    <textTemplates>
+        <name>tplCommentLine</name>
+        <isViewedAsPlainText>true</isViewedAsPlainText>
+        <text>{!Loop_Comments.CreatedDate} — {!Loop_Comments.CommentBody}
+</text>
+    </textTemplates>
+    <variables>
+        <description>Collected comment text returned to the prompt.</description>
+        <name>varCommentText</name>
+        <dataType>String</dataType>
+        <isCollection>false</isCollection>
+        <isInput>false</isInput>
+        <isOutput>false</isOutput>
+    </variables>
+    <variables>
+        <description>The Case Id, taken from the prompt template input.</description>
+        <name>recordId</name>
+        <dataType>String</dataType>
+        <isCollection>false</isCollection>
+        <isInput>false</isInput>
+        <isOutput>false</isOutput>
+        <value>
+            <elementReference>$Input.objectToSummarize.Id</elementReference>
+        </value>
+    </variables>
+</Flow>

@@ -1,0 +1,334 @@
+# ==============================================================================
+# AGENT SCRIPT EXAMPLE — Case Assistant (internal employee agent)
+# ------------------------------------------------------------------------------
+# Generic example demonstrating the authoring rules in
+# skills/16-agentforce-agent-script.md. Every construct used here appears in a
+# working production agent, but this exact script has NOT been deployed (no
+# Agent Script org was available) — validate it in Agentforce Builder.
+#
+# Backing components (all in examples/agentforce-actions/, validated in a real org):
+#   flow://Get_Record_Object_Type                  → classify the record on screen
+#   generatePromptResponse://Case_Summary_Example  → Case summary (uses a Prompt Flow)
+#   apex://OpenCaseLookup                          → open cases for an Account
+#
+# Subagents:
+#   router              entry point; routes, never answers
+#   case_summary        summarizes the Case on screen (verbatim template output)
+#   summary_follow_up   answers follow-ups grounded ONLY in the last summary
+#   account_open_cases  lists open cases for the Account on screen
+# ==============================================================================
+config:
+    developer_name: "Case_Assistant_Example"
+    agent_label: "Case Assistant Example"
+    description: "Internal assistant for support staff: summarizes the Case on screen, answers follow-up questions about that summary, and lists open cases for the Account on screen."
+    agent_type: "AgentforceEmployeeAgent"
+    enable_enhanced_event_logs: True
+# ------------------------------------------------------------------------------
+# Variables — each description states SET BY / READ BY / CLEARED BY (rule 9)
+# ------------------------------------------------------------------------------
+variables:
+    currentRecordId: mutable string
+        label: "currentRecordId"
+        description: "The ID of the record on the user's screen. It may not relate to the user's input."
+        visibility: "External"
+    record_id: mutable string = ""
+        description: "Record being worked on this turn. SET BY: every subagent's before_reasoning from currentRecordId. READ BY: all actions. CLEARED BY: after_reasoning."
+    last_record_id: mutable string = ""
+        description: "Record id seen on the previous turn, used to detect record changes. SET BY: before_reasoning in every subagent. Never cleared."
+    object_type: mutable string = ""
+        description: "Case, Account, or Other. SET BY: Get_Record_Object_Type flow (deterministic). CLEARED BY: record change and after_reasoning."
+    summary: mutable string = ""
+        description: "Case summary produced THIS turn. SCOPE: case_summary only. CLEARED BY: case_summary.after_reasoning."
+    last_summary: mutable string = ""
+        description: "Most recent Case summary shown, kept across turns for follow-ups. SET BY: case_summary when a summary renders. READ BY: router, summary_follow_up. CLEARED BY: record change in every subagent."
+    follow_up_question: mutable string = ""
+        description: "User's follow-up question about last_summary. SET BY: capture_follow_up in summary_follow_up only. CLEARED BY: summary_follow_up.after_reasoning."
+    open_cases: mutable string = ""
+        description: "Open cases returned by OpenCaseLookup this turn. SCOPE: account_open_cases only. CLEARED BY: account_open_cases.after_reasoning."
+    open_cases_error: mutable string = ""
+        description: "Error message from OpenCaseLookup this turn; empty on success. SCOPE: account_open_cases only. CLEARED BY: account_open_cases.after_reasoning."
+
+language:
+    default_locale: "en_US"
+    additional_locales: ""
+    all_additional_locales: False
+
+system:
+    instructions: |You are Case Assistant, an internal tool for support staff. You summarize the
+                    Case on the user's screen, answer follow-up questions about that summary, and
+                    list open cases for the Account on the user's screen.
+
+                    Rules:
+                    - Only use data returned by actions or prompt templates, or a summary already
+                    shown in this session. Never invent case numbers, record IDs, names, dates,
+                    amounts, steps, or links.
+                    - When displaying prompt template output, output it exactly as returned.
+                    - If an action returns an error or nothing, say so clearly and suggest what to check.
+                    - Keep responses short and professional.
+    messages:
+        welcome: |I can summarize the Case you're looking at, answer questions about that summary, and list open cases for an Account.
+                  What would you like to do?
+        error: "Something went wrong while processing your request. Please try again — if it keeps happening, contact your Salesforce administrator."
+    recommended_prompts:
+        in_conversation: False
+        welcome_screen: True
+        starter_prompts:
+            - "Summarize this case"
+            - "Show open cases for this account"
+
+# ==============================================================================
+# ROUTER — deterministic classification, then routing via action descriptions
+# ==============================================================================
+start_agent router:
+    description: "Routes the user's request to the right subagent: Case summary, follow-up questions on a summary already shown, or open cases for an Account."
+    before_reasoning:
+        # Rule 2: every subagent resets record-scoped state on record change.
+        set @variables.record_id = @variables.currentRecordId
+        if @variables.record_id != @variables.last_record_id:
+            set @variables.object_type = ""
+            set @variables.summary = ""
+            set @variables.last_summary = ""
+            set @variables.follow_up_question = ""
+            set @variables.open_cases = ""
+            set @variables.open_cases_error = ""
+            set @variables.last_record_id = @variables.record_id
+    reasoning:
+        instructions: ->
+            # Rule 1 + 3: classify deterministically, once, only with a record id.
+            if @variables.record_id != "" and @variables.record_id != "None" and @variables.object_type == "":
+                run @actions.Get_Record_Object_Type
+                    with recordId = @variables.record_id
+                    set @variables.object_type = @outputs.objectType
+            # Rule 8: error traps, one per failure mode.
+            if @variables.record_id == "" or @variables.record_id == "None":
+                | I work from the record on your screen. Open a Case or an Account and ask me again.
+            if @variables.record_id != "" and @variables.record_id != "None" and @variables.object_type == "":
+                | I couldn't tell what kind of record you're on. Refresh the page and try again — if it keeps happening, contact your Salesforce administrator.
+            if @variables.object_type == "Other":
+                | I can only help with Cases and Accounts. Open a Case or an Account and ask me again.
+            # Rule 6: routing rules live in the action descriptions below.
+            if @variables.object_type == "Case" or @variables.object_type == "Account":
+                | Call exactly one routing action. Do not answer the question yourself and do not ask a clarifying question — the record on screen supplies the context.
+        actions:
+            go_to_case_summary: @utils.transition to @subagent.case_summary
+                description: "Use this action when the user wants a summary, brief, overview, or status of the Case on screen ('summarize this', 'what's going on with this case'). Do NOT use it for a follow-up about a summary already shown — use go_to_follow_up."
+                available when @variables.object_type == "Case"
+            go_to_follow_up: @utils.transition to @subagent.summary_follow_up
+                description: "Use this action when the user asks about something in the Case summary already shown this session ('what was the last update?', 'who reported it?'). Do NOT use it for a new summary request — use go_to_case_summary."
+                available when @variables.object_type == "Case" and @variables.last_summary != ""
+            go_to_open_cases: @utils.transition to @subagent.account_open_cases
+                description: "Use this action when the user asks about open, active, or unresolved cases for the Account on screen. Do NOT use it on a Case record."
+                available when @variables.object_type == "Account"
+    actions:
+        Get_Record_Object_Type:
+            description: "Deterministic Flow that returns Case, Account, or Other from the record Id prefix."
+            label: "Get Record Object Type"
+            require_user_confirmation: False
+            include_in_progress_indicator: False
+            target: "flow://Get_Record_Object_Type"
+            inputs:
+                recordId: string
+                    label: "Record ID"
+                    is_required: True
+            outputs:
+                objectType: string
+                    label: "Object Type"
+                    filter_from_agent: False
+                    is_displayable: False
+
+# ==============================================================================
+# CASE SUMMARY — verbatim pass-through of the prompt template (rule 7)
+# ==============================================================================
+subagent case_summary:
+    description: "Summarizes the Case on screen using the Case_Summary_Example prompt template."
+    before_reasoning:
+        set @variables.record_id = @variables.currentRecordId
+        if @variables.record_id != @variables.last_record_id:
+            set @variables.object_type = ""
+            set @variables.summary = ""
+            set @variables.last_summary = ""
+            set @variables.follow_up_question = ""
+            set @variables.open_cases = ""
+            set @variables.open_cases_error = ""
+            set @variables.last_record_id = @variables.record_id
+    reasoning:
+        instructions: ->
+            # This subagent can be entered without passing through the router, so classify here too.
+            if @variables.record_id != "" and @variables.record_id != "None" and @variables.object_type == "":
+                run @actions.Get_Record_Object_Type
+                    with recordId = @variables.record_id
+                    set @variables.object_type = @outputs.objectType
+            if @variables.object_type != "Case":
+                | The record on your screen isn't a Case. Open a Case and ask me to summarize it.
+            if @variables.object_type == "Case" and @variables.summary == "":
+                run @actions.Case_Summary
+                    with "Input:Case" = @variables.record_id
+                    set @variables.summary = @outputs.promptResponse
+            if @variables.summary != "":
+                set @variables.last_summary = @variables.summary
+            if @variables.summary != "":
+                | OUTPUT CONTRACT — VERBATIM. Output the text below exactly as written: every HTML tag, line, and word. Do not summarize, reword, reorder, or add anything before or after it (no follow-up questions, no offers of help). {!@variables.summary}
+            if @variables.object_type == "Case" and @variables.summary == "":
+                | I couldn't generate a summary for this Case. The summary template may be unavailable or the Case may not be accessible to you. Try again — if it keeps happening, contact your Salesforce administrator.
+        actions:
+            go_to_router: @utils.transition to @subagent.router
+                description: "Use this action when the user asks for something other than a summary of this Case."
+    after_reasoning:
+        # Per-turn state only; last_summary survives for follow-ups.
+        set @variables.record_id = ""
+        set @variables.object_type = ""
+        set @variables.summary = ""
+    actions:
+        Get_Record_Object_Type:
+            description: "Deterministic Flow that returns Case, Account, or Other from the record Id prefix."
+            label: "Get Record Object Type"
+            require_user_confirmation: False
+            include_in_progress_indicator: False
+            target: "flow://Get_Record_Object_Type"
+            inputs:
+                recordId: string
+                    label: "Record ID"
+                    is_required: True
+            outputs:
+                objectType: string
+                    label: "Object Type"
+                    filter_from_agent: False
+                    is_displayable: False
+        Case_Summary:
+            description: "Generates the Case summary (overview, history from case comments, open items). Requires a Case record id."
+            label: "Case Summary"
+            require_user_confirmation: False
+            include_in_progress_indicator: True
+            progress_indicator_message: "Summarizing the case"
+            target: "generatePromptResponse://Case_Summary_Example"
+            inputs:
+                "Input:Case": object
+                    description: "The Case to summarize"
+                    is_required: True
+                    complex_data_type_name: "lightning__recordInfoType"
+            outputs:
+                promptResponse: string
+                    description: "The Case summary as HTML."
+                    label: "Prompt Response"
+                    is_displayable: False
+                    filter_from_agent: False
+
+# ==============================================================================
+# SUMMARY FOLLOW-UP — grounded only in the last summary shown
+# ==============================================================================
+subagent summary_follow_up:
+    description: "Answers follow-up questions about the Case summary already shown this session, using only that summary."
+    before_reasoning:
+        set @variables.record_id = @variables.currentRecordId
+        if @variables.record_id != @variables.last_record_id:
+            set @variables.object_type = ""
+            set @variables.summary = ""
+            set @variables.last_summary = ""
+            set @variables.follow_up_question = ""
+            set @variables.open_cases = ""
+            set @variables.open_cases_error = ""
+            set @variables.last_record_id = @variables.record_id
+    reasoning:
+        instructions: ->
+            if @variables.last_summary == "":
+                | I haven't summarized this Case yet. Ask me to summarize it first.
+            if @variables.last_summary != "" and @variables.follow_up_question != "":
+                | Answer the follow-up question using ONLY the summary below. If the answer isn't in the summary, say so plainly and suggest asking for a fresh summary or checking the Case directly. Never fill a gap with plausible-sounding details. Keep the answer under 120 words.
+                | Follow-up question: {!@variables.follow_up_question}
+                | Summary: {!@variables.last_summary}
+        actions:
+            capture_follow_up: @utils.setVariables
+                description: "Use this action when the user asks a question about the Case summary already shown. Captures their question. Do NOT use it for a new summary request or anything unrelated — use go_to_router."
+                available when @variables.follow_up_question == "" and @variables.last_summary != ""
+                with follow_up_question = ...
+            go_to_router: @utils.transition to @subagent.router
+                description: "Use this action when the user asks for a new summary or anything that isn't a question about the summary already shown."
+                available when @variables.follow_up_question == ""
+    after_reasoning:
+        set @variables.record_id = ""
+        set @variables.follow_up_question = ""
+
+# ==============================================================================
+# ACCOUNT OPEN CASES — invocable Apex, errors returned not thrown
+# ==============================================================================
+subagent account_open_cases:
+    description: "Lists open cases for the Account on screen."
+    before_reasoning:
+        set @variables.record_id = @variables.currentRecordId
+        if @variables.record_id != @variables.last_record_id:
+            set @variables.object_type = ""
+            set @variables.summary = ""
+            set @variables.last_summary = ""
+            set @variables.follow_up_question = ""
+            set @variables.open_cases = ""
+            set @variables.open_cases_error = ""
+            set @variables.last_record_id = @variables.record_id
+    reasoning:
+        instructions: ->
+            if @variables.record_id != "" and @variables.record_id != "None" and @variables.object_type == "":
+                run @actions.Get_Record_Object_Type
+                    with recordId = @variables.record_id
+                    set @variables.object_type = @outputs.objectType
+            if @variables.object_type != "Account":
+                | The record on your screen isn't an Account. Open an Account and ask again.
+            if @variables.object_type == "Account" and @variables.open_cases == "" and @variables.open_cases_error == "":
+                run @actions.Get_Open_Cases
+                    with accountId = @variables.record_id
+                    set @variables.open_cases = @outputs.cases
+                    set @variables.open_cases_error = @outputs.errorMessage
+            if @variables.object_type == "Account" and @variables.open_cases_error != "":
+                | I couldn't look up open cases: {!@variables.open_cases_error}. Check that you have access to this Account's cases, then try again.
+            if @variables.object_type == "Account" and @variables.open_cases_error == "":
+                | List the open cases below as bullets: Case Number, Subject, Status, Priority. If the list is empty, say this Account has no open cases. Use only this data: {!@variables.open_cases}
+        actions:
+            go_to_router: @utils.transition to @subagent.router
+                description: "Use this action when the user asks for something other than this Account's open cases."
+    after_reasoning:
+        set @variables.record_id = ""
+        set @variables.object_type = ""
+        set @variables.open_cases = ""
+        set @variables.open_cases_error = ""
+    actions:
+        Get_Record_Object_Type:
+            description: "Deterministic Flow that returns Case, Account, or Other from the record Id prefix."
+            label: "Get Record Object Type"
+            require_user_confirmation: False
+            include_in_progress_indicator: False
+            target: "flow://Get_Record_Object_Type"
+            inputs:
+                recordId: string
+                    label: "Record ID"
+                    is_required: True
+            outputs:
+                objectType: string
+                    label: "Object Type"
+                    filter_from_agent: False
+                    is_displayable: False
+        Get_Open_Cases:
+            description: "Returns up to 10 open cases for an Account, newest first. Failures come back in errorMessage instead of throwing."
+            label: "Get Open Cases for Account"
+            require_user_confirmation: False
+            include_in_progress_indicator: True
+            progress_indicator_message: "Looking up open cases"
+            target: "apex://OpenCaseLookup"
+            inputs:
+                "accountId": string
+                    description: "Id of the Account to find open cases for."
+                    label: "Account Id"
+                    is_required: True
+                    is_user_input: False
+            outputs:
+                "cases": list[object]
+                    description: "Open cases, newest first. Empty if none or on error."
+                    label: "Cases"
+                    is_displayable: False
+                    filter_from_agent: False
+                    complex_data_type_name: "@apexClassType/c__OpenCaseLookup$CaseInfo"
+                "success": boolean
+                    label: "Success"
+                    is_displayable: False
+                    filter_from_agent: False
+                "errorMessage": string
+                    label: "Error Message"
+                    is_displayable: False
+                    filter_from_agent: False
