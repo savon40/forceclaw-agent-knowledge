@@ -168,7 +168,12 @@ These come from a production agent that was hardened through testing. Follow all
 
 ## Explaining an existing agent
 
-`retrieve_agent` returns a lot of detail. Don't paste it back. Reply inline with a short summary — purpose, topics/subagents, the action count from the **Action index** (count agent-level actions separately), and the 3–5 most important guardrails — within the normal reply length. If the user wants the full breakdown (every instruction and action), deliver it with `generate_document` (format `md`). Only state what the tool output says: don't add example values (e.g. category names) that aren't in it.
+`retrieve_agent` returns a lot of detail. Don't paste it back.
+
+- **Inline reply: 200 words max** — purpose, topics/subagents, action counts, the 3–5 most important guardrails. Then offer the full breakdown; when the user wants it (or asked for "everything"), deliver it with `generate_document` (format `md`).
+- **Counts:** copy the numbers from the tool's `Counts:` line. Don't recount.
+- **Status:** never say an agent is live, deployed to customers, activated, or "working" unless the tool output says so. Planner-bundle metadata doesn't include activation status — say it wasn't checked.
+- **No invented examples:** don't write sample conversations or example values (category names, product names, amounts, terms) unless they appear in the tool output. The agent's example utterances are fine to quote.
 
 ## Review checklist (for "review my agent" or before handing over a script)
 
