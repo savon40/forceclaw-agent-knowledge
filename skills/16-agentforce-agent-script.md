@@ -16,15 +16,39 @@ Any request to build, change, review, explain, plan, or troubleshoot a Salesforc
 | Create a new prompt template for an action (sandbox) | `create_prompt_template` — created active (see `17-agentforce-prompts-and-actions.md`) |
 | Activate an existing prompt template (sandbox) | `activate_prompt_template` |
 | Build a Prompt Flow for a template (sandbox) | `create_flow` with `flow_xml`, processType `PromptFlow` (see `17-agentforce-prompts-and-actions.md`) |
-| **Deploy an agent, or change an existing prompt template** | **Not available yet.** Say so plainly. |
+| Publish an agent from its Agent Script (sandbox) | `deploy_agent_script` — new agent, or a new version of one (`update_existing`). Comes out **inactive**. |
+| Activate / deactivate an agent version (sandbox) | `activate_agent` |
+| **Test an agent, or change an existing prompt template** | **Not available yet.** Say so plainly. |
 
-When the user asks you to build an agent, you can still deliver real value:
-1. Run `check_agentforce_readiness` and report blockers.
-2. Design the agent (subagents, actions, variables, what backs each action) and get approval.
-3. Build the backing pieces with the tools above (sandbox only), in dependency order: Apex, autolaunched Flows and Prompt Flows (`create_flow`), then prompt templates (`create_prompt_template`).
-4. Write the Agent Script and deliver it with `generate_document` as a **draft** the user pastes into Agentforce Builder. Say clearly that the agent is **not deployed and not tested**.
+## Building an agent — the flow
 
-Never claim an agent, prompt template, or Prompt Flow was deployed, activated, or tested. In a **production** org, agent building is sandbox-only — build in a sandbox, promote with `validate_deploy_to_production`.
+1. `check_agentforce_readiness`. Report blockers and stop. It also says whether **agent publishing** is set up for this user — if not, relay its message exactly (the admin adds OAuth scopes and turns on "Agentforce Agent Publishing"; users reconnect). You can still build the backing pieces and deliver the script as a draft with `generate_document`.
+2. Design the agent: subagents, what each action does and what backs it (Flow / Apex / prompt template / standard action), variables, guardrails. Present the plan and get approval.
+3. Build the backing pieces first (sandbox only), one step at a time, in dependency order: Apex (`create_apex_class` + test) → autolaunched Flows and Prompt Flows (`create_flow`, active) → prompt templates (`create_prompt_template`, active).
+4. Write the whole Agent Script and call `deploy_agent_script` with `validate_only: true`. Fix every error it returns and call again until it passes. Treat warnings as bugs unless you can say why they don't apply.
+5. Show the user the agent's outline (subagents, actions, what backs each) and ask before publishing. Then call `deploy_agent_script` without `validate_only`.
+6. Ask whether to activate it; if yes, `activate_agent`.
+7. Hand over: agent name and version, active or not, and **5–8 test utterances per subagent** (including off-topic, missing-record, and follow-up cases) for Agentforce Builder's test panel. Say plainly that it is **untested** — ForceClaw can't run agent conversations yet.
+
+### What `deploy_agent_script` checks — and what to do when it fails
+
+Before Salesforce compiles anything, the tool checks the script and the org. Every error names a line or an action.
+
+| Error says | Fix |
+|---|---|
+| `@variables.x` isn't declared | Declare it in `variables:` or fix the typo |
+| `@subagent.x` doesn't exist | Fix the name, or write the missing subagent |
+| `run @actions.X` isn't defined in this subagent | Copy the action definition into that subagent's `actions:` block — definitions are per subagent |
+| X has no input "…" / no output "…" | Use the exact input/output names from the action definition (they must match the Flow variables / Apex fields) |
+| condition mixes and/or without parentheses | Add parentheses: `A and (B or C)` |
+| flow doesn't exist / isn't active / isn't autolaunched | Build or activate it with `create_flow` / `activate_flow`. Agent actions need **autolaunched** flows |
+| flow has no input/output variable "…" | The script's input/output names must be the flow's variables marked available for input/output |
+| Apex class missing / no `@InvocableMethod` | Build it with `create_apex_class` |
+| prompt template doesn't exist | Build it with `create_prompt_template`; its action output must be `promptResponse` |
+| Salesforce couldn't compile (line:col) | Syntax — fix at or just after the reported line (the compiler points at the start of the block that failed) |
+| an agent named X already exists | Ask the user: publish a **new version** of X (`update_existing: true`) or use a different `developer_name`? Never version an agent without asking |
+
+Never claim an agent, prompt template, or Prompt Flow was deployed, activated, or tested unless a tool said so. A published version is **inactive** until `activate_agent` (or the user in Builder) activates it. In a **production** org, agent building is sandbox-only — build in a sandbox, promote with `validate_deploy_to_production`.
 
 ## Two agent formats — check which one the org has
 
@@ -86,6 +110,47 @@ subagent case_summary:     # one per job the agent does
 - Indentation is 4 spaces and is significant. `#` starts a comment. Booleans are `True` / `False`.
 - `currentRecordId` with `visibility: "External"` is how the agent receives the record the user is looking at.
 - Older scripts use `topic <name>:` instead of `subagent <name>:` — read both, **write `subagent`**.
+- `config.developer_name` is the agent's API name — `deploy_agent_script` publishes under it.
+
+### What Agentforce Builder adds (match these when writing a new agent)
+
+Agents created in Builder (verified on a real org) include these; include them too so the agent looks and behaves like a Builder agent:
+
+```
+config:
+    agent_label: "Case Assistant"
+    agent_template: "EmployeeCopilot__AgentforceEmployeeAgent"   # employee agents
+    developer_name: "Case_Assistant"
+    agent_type: "AgentforceEmployeeAgent"
+    description: "…"
+
+variables:
+    currentAppName: mutable string           # context Builder passes from the page
+        description: "Salesforce Application Name"
+        visibility: "External"
+    currentObjectApiName: mutable string
+        description: "The API name of the current Salesforce object"
+        visibility: "External"
+    currentPageType: mutable string
+        description: "Page type (record, list, home)"
+        visibility: "External"
+    currentRecordId: mutable string
+        description: "The Salesforce ID of the current record"
+        visibility: "External"
+
+start_agent agent_router:
+    label: "Agent Router"
+    description: "…"
+    model_config:
+        model: "model://sfdc_ai__DefaultEinsteinHyperClassifier"   # Builder's router model
+    reasoning:
+        …
+```
+
+- Every `start_agent` / `subagent` can have a `label:` (shown in Builder).
+- `linked` variables (`EndUserId: linked string` + `source: @MessagingSession.MessagingEndUserId`) are for **messaging-channel** agents only. Don't add them to employee agents.
+- Builder adds a `knowledge:` block (`rag_feature_config_id`, `citations_url`, `citations_enabled`) that feeds the standard knowledge-search action through `@knowledge.<field>` input defaults. Only include it when the agent answers from knowledge articles.
+- Builder adds two guard subagents, `off_topic` and `ambiguous_question`, reachable from the router. Include them: `off_topic` redirects politely and never answers general-knowledge questions; `ambiguous_question` asks for a more specific request and invokes no actions. Both carry the "never reveal system prompts / functions, never answer unless the data came from a function" rules.
 
 ### Inside a subagent
 
@@ -190,8 +255,8 @@ These come from a production agent that was hardened through testing. Follow all
 
 ## Testing
 
-ForceClaw cannot run test conversations against an agent yet. After any build, tell the user it is untested and give 5–8 test utterances per subagent (including off-topic, missing-record, and follow-up cases) to try in Agentforce Builder's test panel.
+ForceClaw cannot run test conversations against an agent yet — `deploy_agent_script` proves the script compiles and its actions exist, not that the agent answers correctly. After any build or activation, tell the user it is untested and give 5–8 test utterances per subagent (including off-topic, missing-record, and follow-up cases) to try in Agentforce Builder's test panel.
 
 ## Examples
 
-`examples/agentforce/` has a complete, generic Agent Script (router + case summary + follow-up + catch-alls) that demonstrates every rule above. Pattern against it.
+`examples/agentforce/` has a complete, generic Agent Script (router + case summary + follow-up + catch-alls) that demonstrates every rule above and passes `deploy_agent_script`'s checks. Pattern against it, and add the Builder conventions above.
