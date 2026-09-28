@@ -30,8 +30,8 @@ Any request to build, change, review, explain, plan, or troubleshoot a Salesforc
 5. **Test the draft** with `test_agent` (`script`) — see "Testing" below. When a test fails, read the reply, the route, and the action inputs in the report, fix the **script**, and run the **same** tests again. Repeat until every test passes. `deploy_agent_script` refuses to publish a script that hasn't passed every test on that exact text.
    - **Never loosen or delete an expectation to get a pass.** A failing test is almost always a real bug (it was, every time so far). Change an expectation only if it was factually wrong — and tell the user you changed it and why.
    - If you can't make a test pass, stop and tell the user which tests fail and why. Publish anyway (`publish_untested: true`) only if they explicitly say so, and then never call the agent ready.
-6. Show the user the agent's outline and the test results (which scenarios passed), and ask before publishing. Then call `deploy_agent_script` without `validate_only`.
-7. Ask whether to activate it; if yes, `activate_agent`, then run the same tests once against the active version (`test_agent` with `agent_name`).
+6. Show the user the agent's outline and the test results (which scenarios passed), and ask "Want me to publish it?" — then stop. Publishing is blocked until the user says yes to that question; a yes to the plan doesn't count. Then call `deploy_agent_script` without `validate_only`.
+7. Ask "Want me to activate it now?" and stop (also enforced — a yes to publishing isn't a yes to activating); if yes, `activate_agent`, then run the same tests once against the active version (`test_agent` with `agent_name`).
 8. Hand over: agent name and version, active or not, which scenarios were tested and passed, and a few extra utterances the user can try in Builder. Only say it works for what was tested.
 
 ### What `deploy_agent_script` checks — and what to do when it fails
@@ -114,7 +114,7 @@ subagent case_summary:     # one per job the agent does
 - Indentation is 4 spaces and is significant. `#` starts a comment. Booleans are `True` / `False`.
 - `currentRecordId` with `visibility: "External"` is how the agent receives the record the user is looking at.
 - Older scripts use `topic <name>:` instead of `subagent <name>:` — read both, **write `subagent`**.
-- `config.developer_name` is the agent's API name — `deploy_agent_script` publishes under it.
+- `config.developer_name` is the agent's API name — `deploy_agent_script` publishes under it. **Never end it in `_<number>`** (`FC_Case_Desk_3`): Salesforce saves each version's script as `<Agent>_<version>`, so that name collides with version 3 of `FC_Case_Desk`. Use `FC_Case_Desk_V3` or a real word.
 - `recommended_prompts.starter_prompts` must have **at least 3** entries, or Salesforce won't compile the script.
 
 ### What Agentforce Builder adds (match these when writing a new agent)
