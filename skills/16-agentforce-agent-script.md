@@ -17,8 +17,9 @@ Any request to build, change, review, explain, plan, or troubleshoot a Salesforc
 | Activate an existing prompt template (sandbox) | `activate_prompt_template` |
 | Build a Prompt Flow for a template (sandbox) | `create_flow` with `flow_xml`, processType `PromptFlow` (see `17-agentforce-prompts-and-actions.md`) |
 | Publish an agent from its Agent Script (sandbox) | `deploy_agent_script` — new agent, or a new version of one (`update_existing`). Comes out **inactive**. |
+| Test an agent with real conversations (sandbox) | `test_agent` — a draft `script` (nothing published) or the active version (`agent_name`) |
 | Activate / deactivate an agent version (sandbox) | `activate_agent` |
-| **Test an agent, or change an existing prompt template** | **Not available yet.** Say so plainly. |
+| **Change an existing prompt template** | **Not available yet.** Say so plainly. |
 
 ## Building an agent — the flow
 
@@ -26,9 +27,12 @@ Any request to build, change, review, explain, plan, or troubleshoot a Salesforc
 2. Design the agent: subagents, what each action does and what backs it (Flow / Apex / prompt template / standard action), variables, guardrails. Present the plan and get approval.
 3. Build the backing pieces first (sandbox only), one step at a time, in dependency order: Apex (`create_apex_class` + test) → autolaunched Flows and Prompt Flows (`create_flow`, active) → prompt templates (`create_prompt_template`, active).
 4. Write the whole Agent Script and call `deploy_agent_script` with `validate_only: true`. Fix every error it returns and call again until it passes. Treat warnings as bugs unless you can say why they don't apply.
-5. Show the user the agent's outline (subagents, actions, what backs each) and ask before publishing. Then call `deploy_agent_script` without `validate_only`.
-6. Ask whether to activate it; if yes, `activate_agent`.
-7. Hand over: agent name and version, active or not, and **5–8 test utterances per subagent** (including off-topic, missing-record, and follow-up cases) for Agentforce Builder's test panel. Say plainly that it is **untested** — ForceClaw can't run agent conversations yet.
+5. **Test the draft** with `test_agent` (`script`) — see "Testing" below. When a test fails, read the reply, the route, and the action inputs in the report, fix the **script**, and run the **same** tests again. Repeat until every test passes. `deploy_agent_script` refuses to publish a script that hasn't passed every test on that exact text.
+   - **Never loosen or delete an expectation to get a pass.** A failing test is almost always a real bug (it was, every time so far). Change an expectation only if it was factually wrong — and tell the user you changed it and why.
+   - If you can't make a test pass, stop and tell the user which tests fail and why. Publish anyway (`publish_untested: true`) only if they explicitly say so, and then never call the agent ready.
+6. Show the user the agent's outline and the test results (which scenarios passed), and ask before publishing. Then call `deploy_agent_script` without `validate_only`.
+7. Ask whether to activate it; if yes, `activate_agent`, then run the same tests once against the active version (`test_agent` with `agent_name`).
+8. Hand over: agent name and version, active or not, which scenarios were tested and passed, and a few extra utterances the user can try in Builder. Only say it works for what was tested.
 
 ### What `deploy_agent_script` checks — and what to do when it fails
 
@@ -111,6 +115,7 @@ subagent case_summary:     # one per job the agent does
 - `currentRecordId` with `visibility: "External"` is how the agent receives the record the user is looking at.
 - Older scripts use `topic <name>:` instead of `subagent <name>:` — read both, **write `subagent`**.
 - `config.developer_name` is the agent's API name — `deploy_agent_script` publishes under it.
+- `recommended_prompts.starter_prompts` must have **at least 3** entries, or Salesforce won't compile the script.
 
 ### What Agentforce Builder adds (match these when writing a new agent)
 
@@ -234,6 +239,13 @@ These come from a production agent that was hardened through testing. Follow all
 11. **Parenthesise mixed `and` / `or`.** `A and B or C` is evaluated as `(A and B) or C`. Write `A and (B or C)` when that is what you mean.
 12. **Never fabricate.** `system.instructions` must say to use only data returned by actions, templates, or prior answers, and never invent record numbers, IDs, figures, steps, or links.
 
+## Lessons from testing real agents
+
+- **Decide where the record Id comes from — and handle both sources.** Users type Ids in chat ("what is 500…?") as often as they ask about the record on screen. And in Agentforce Builder's preview, the Agent API, and anywhere outside a record page, `currentRecordId` is **unset**. An agent that only reads `currentRecordId` fails every typed-Id question. Unless the user says otherwise: an Id typed in the latest message wins, then the record on screen, and if there's neither, ask for an Id (and call no action).
+- **Unset variables are null, not "".** A guard like `if @variables.record_id != "" and @variables.record_id != "None":` still passes when the variable was never set, so the `run` fires with no input (verified: the flow received `{}`). When merged into text, an unset variable renders as `None`. Don't rely on `!= ""` alone to protect a `run` on an External variable. Either have the LLM pick the Id (expose the action with `with recordId = ...`, and give it the screen Id as text: `"{!@variables.currentRecordId}" — only if it's a real Id (not empty and not "None")`), or make sure the action handles a missing input.
+- **Every answer path needs an output contract**, not only prompt-template answers. Without "reply with exactly … and nothing else; never add questions or offers", agents tack on "Would you like help with…?" — and then improvise when the user says yes. Give the exact sentences for each outcome, including the error outcome.
+- **Include an `off_topic` subagent** so unrelated questions get a fixed reply instead of an improvised one.
+
 ## Explaining an existing agent
 
 `retrieve_agent` returns a lot of detail. Don't paste it back.
@@ -255,7 +267,27 @@ These come from a production agent that was hardened through testing. Follow all
 
 ## Testing
 
-ForceClaw cannot run test conversations against an agent yet — `deploy_agent_script` proves the script compiles and its actions exist, not that the agent answers correctly. After any build or activation, tell the user it is untested and give 5–8 test utterances per subagent (including off-topic, missing-record, and follow-up cases) to try in Agentforce Builder's test panel.
+`test_agent` runs real conversations and checks the answers. Each test case is a fresh conversation: `messages` (sent in order), optional `current_record_id` (the record on screen — omit it to test with **no** page record, which is what Builder's preview and the chat panel outside a record page look like), and `expect`:
+
+- `contains` / `not_contains` — checked against the reply to the **last** message, case-insensitive.
+- `actions` — actions that must run. `no_actions` — none may run.
+
+**Use real records.** Actions run for real — find real Ids with `query_salesforce` (one per object the agent handles). Made-up Ids like `500000000000001` are rejected: the Id prefix still classifies, but anything that reads the record runs against nothing and "passes" on garbage.
+
+**Write distinguishing expectations.** `contains: ["Account"]` also passes on "not a Case or Account" — use `contains: ["an Account"]` plus `not_contains: ["not a Case"]`. For fixed replies, match a distinctive part of the exact sentence.
+
+Cover, for every agent:
+- each subagent's main job, with realistic phrasing;
+- a record Id **typed in the message** with no record on screen;
+- the record on screen only (`current_record_id`), and a typed Id that differs from the record on screen;
+- no Id and no record — it must ask, and `no_actions: true`;
+- an off-topic question — fixed reply, `no_actions: true`;
+- a follow-up in the same conversation;
+- `not_contains: ["Would you like", "Do you need"]` on answers, to catch added offers.
+
+Actions run **for real**. If an action creates, updates, or deletes data, either tell the user first or use `simulate_actions: true` (draft only) — simulated action outputs are invented, so then only check routing, which actions ran, and their inputs.
+
+When a test fails, the report shows why: the route (which subagents handled it) and each action with its inputs and outputs. An action with **empty inputs** (`Get_Record_Object_Type()`) means the script never passed it a value — see "Lessons from testing real agents".
 
 ## Examples
 
