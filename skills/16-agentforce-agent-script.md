@@ -226,9 +226,9 @@ Types: `string`, `integer`, `boolean`, `object`, `list[object]`. `complex_data_t
 
 These come from a production agent that was hardened through testing. Follow all of them; check all of them when reviewing.
 
-1. **Deterministic first.** Anything computable without the LLM (classifying the record type, resetting state, fetching the record) goes in `before_reasoning` or a guarded `run` — e.g. classify the object from the record Id with a small Flow, not with the LLM.
-2. **Reset state on record change — in every subagent.** There is no shared `before_reasoning`. Each subagent that uses record-scoped variables must clear them when `record_id != last_record_id`. Missing one subagent leaks data from the previous record.
-3. **Guard every `run`.** Wrap it in an `if` that checks its inputs are present and its output is still empty, so it runs once and only with valid input.
+1. **Classify with an action, not with the LLM.** Anything a Flow or Apex can compute (the record's object type, a record lookup) comes from an action — the LLM never guesses it. Let the LLM **pick the input** (the Id the user typed, else the record on screen) and **call the action**: expose it under `reasoning: actions:` with `with recordId = ...`, and give the screen record as text in the instructions (`"{!@variables.currentRecordId}" — only if that is a real Id (not empty and not "None")`). This is the pattern in the example and it passes testing.
+2. **Only use a deterministic `run` on a variable you set yourself to a known value.** An External variable like `currentRecordId` is **unset (null)** when there's no record on screen — `if @variables.record_id != "" and @variables.record_id != "None":` still passes, and the `run` fires with **no input** (verified in testing, three agents in a row). Don't copy `currentRecordId` into a variable and `run` on it. If you do use deterministic state across turns, reset it on record change in every subagent that uses it.
+3. **Every path ends in an exact sentence.** For each outcome — success per result value, "no Id", "wrong record type", "action failed" — write the exact reply and say "reply exactly … and nothing else". That's what stops the agent adding "Would you like…?" and improvising.
 4. **Gate LLM choices with `available when`.** If the LLM shouldn't pick an action right now, it shouldn't see it.
 5. **Capture, then route.** Capture the user's question into a variable (`@utils.setVariables`) before transitioning, so the destination subagent doesn't ask again. When the record already supplies context, forbid clarifying questions explicitly.
 6. **Put routing rules in action descriptions**, in the form "Use this action when … Do NOT use this action for …". Mid-turn `|` instructions about routing are advisory and were ignored in testing; action descriptions were followed.
@@ -291,4 +291,4 @@ When a test fails, the report shows why: the route (which subagents handled it) 
 
 ## Examples
 
-`examples/agentforce/` has a complete, generic Agent Script (router + case summary + follow-up + catch-alls) that demonstrates every rule above and passes `deploy_agent_script`'s checks. Pattern against it, and add the Builder conventions above.
+`examples/agentforce/Case_Desk_Example.agent` is the pattern to copy: router + record classification + Case summary (prompt template) + `off_topic`, Id from the message or the record on screen, exact reply sentences. The same script (with a different template name) passed 8/8 real conversations in a test org — pasted Ids, record on screen, no Id, wrong record type, off-topic, verbatim summary. `examples/agentforce/Case_Desk_Example.tests.json` is its `test_agent` suite; adapt it for every new agent.

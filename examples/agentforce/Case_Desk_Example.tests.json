@@ -1,0 +1,144 @@
+// test_agent suite for Case_Desk_Example.agent. Replace <CASE_ID> / <ACCOUNT_ID> with REAL record Ids from query_salesforce.
+[
+ {
+  "name": "typed Case Id, no record on screen",
+  "messages": [
+   "What type of record is <CASE_ID>?"
+  ],
+  "expect": {
+   "contains": [
+    "is a Case"
+   ],
+   "not_contains": [
+    "Account",
+    "Would you like"
+   ],
+   "actions": [
+    "Get_Record_Object_Type"
+   ]
+  }
+ },
+ {
+  "name": "typed Account Id, no record on screen",
+  "messages": [
+   "Tell me about <ACCOUNT_ID>"
+  ],
+  "expect": {
+   "contains": [
+    "an Account"
+   ],
+   "not_contains": [
+    "not a Case",
+    "isn't a Case"
+   ],
+   "actions": [
+    "Get_Record_Object_Type"
+   ]
+  }
+ },
+ {
+  "name": "record on screen - classify",
+  "current_record_id": "<ACCOUNT_ID>",
+  "messages": [
+   "Is this a case or an account?"
+  ],
+  "expect": {
+   "contains": [
+    "an Account"
+   ],
+   "actions": [
+    "Get_Record_Object_Type"
+   ]
+  }
+ },
+ {
+  "name": "typed Id beats record on screen",
+  "current_record_id": "<ACCOUNT_ID>",
+  "messages": [
+   "What is <CASE_ID>?"
+  ],
+  "expect": {
+   "contains": [
+    "is a Case"
+   ],
+   "not_contains": [
+    "Account record"
+   ]
+  }
+ },
+ {
+  "name": "record on screen - summarize",
+  "current_record_id": "<CASE_ID>",
+  "messages": [
+   "Summarize this case"
+  ],
+  "expect": {
+   "contains": [
+    "Overview"
+   ],
+   "not_contains": [
+    "Would you like",
+    "Do you need"
+   ],
+   "actions": [
+    "Get_Record_Object_Type",
+    "Case_Summary"
+   ]
+  }
+ },
+ {
+  "name": "typed Case Id - summarize",
+  "messages": [
+   "Summarize case <CASE_ID>"
+  ],
+  "expect": {
+   "contains": [
+    "Overview"
+   ],
+   "actions": [
+    "Case_Summary"
+   ]
+  }
+ },
+ {
+  "name": "summarize an Account - refuse",
+  "current_record_id": "<ACCOUNT_ID>",
+  "messages": [
+   "Summarize this case"
+  ],
+  "expect": {
+   "contains": [
+    "isn't a Case"
+   ],
+   "actions": [
+    "Get_Record_Object_Type"
+   ]
+  }
+ },
+ {
+  "name": "no Id and no record on screen",
+  "messages": [
+   "What kind of record is this?"
+  ],
+  "expect": {
+   "contains": [
+    "paste"
+   ],
+   "no_actions": true
+  }
+ },
+ {
+  "name": "off-topic",
+  "messages": [
+   "What's the weather today?"
+  ],
+  "expect": {
+   "not_contains": [
+    "sunny",
+    "rain",
+    "degrees"
+   ],
+   "no_actions": true
+  }
+ }
+]
