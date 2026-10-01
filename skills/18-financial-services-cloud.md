@@ -6,6 +6,10 @@ Any request that touches Financial Services Cloud data: clients, households, fin
 
 Everything marked **verified** below was run against a real FSC org (standard FSC objects, API 67). Picklist values and some fields vary by org and license — `describe_object` before relying on one.
 
+### Reading the request — "accounts" means financial accounts
+
+In an FSC org, a question about a client's or household's **accounts** ("what accounts do the Carters have?", "list Grace Okafor's accounts", "the Nguyens' loans") means their **financial accounts** (`FinancialAccount`) — checking, savings, loans, mortgages, investments — not the Salesforce `Account` records for the household and its members. Answer it with Step 3: find the household or person account, get the members, then query 3 (`FinancialAccountParty` on the person account Ids). List each financial account **once** with its type, status and owners (joint accounts return one party row per owner). Only answer with `Account` records when the user clearly means them ("show me the Account records", "who owns the Carter account record").
+
 ## Step 1 — detect which FSC data model the org has
 
 FSC comes in two flavours with **different object and field names**. Never assume; never mix them.
