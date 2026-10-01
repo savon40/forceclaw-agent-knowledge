@@ -1,0 +1,64 @@
+# Org Health Check
+
+## When this applies
+
+The user asks for a health check, org assessment, org audit or review, tech-debt review, "what should we clean up / fix in this org", or a best-practices review of the org as a whole. Also when they ask about one area the scan covers ("are we close to any limits?", "how's our security score?", "do we have duplicate triggers?").
+
+## Run the scan — don't hand-roll it
+
+Call `run_org_health_check`. It runs every check in one go (30–90 seconds), saves the run, and returns numbered findings ordered high → low severity. Don't reproduce it with `query_tooling` or `query_salesforce` calls — you'd hit the turn limit and miss checks.
+
+- One area only → pass `checks`, e.g. `["security_health_check"]` or `["org_limits"]`.
+- It needs the **Read metadata** permission. On a production org that permission is off until an admin turns it on (the org's page in the ForceClaw dashboard → Agent Permissions). If the tool comes back disabled, say that and stop.
+- It runs as the current user. A user without Setup access, or with limited sharing, gets a partial picture. If checks failed, list them and don't call those areas clean.
+
+What it covers:
+
+| Check id | Finds |
+|---|---|
+| `security_health_check` | Setup → Health Check score, each high-risk setting, medium-risk settings |
+| `org_limits` | Limits from `/limits` at 75%+ of max (90%+ is high) |
+| `test_coverage` | Org-wide coverage under 75% (blocks production deploys), classes with 0% or under 75% |
+| `apex_code_quality` | SOQL in loops, DML in loops, hardcoded record IDs, catch blocks that swallow exceptions (heuristic scan of unmanaged, non-test Apex) |
+| `multiple_triggers` | Objects with more than one active trigger |
+| `flow_fault_paths` | Active flows (40 most recently changed) whose DML/action steps have no fault path |
+| `process_builders` | Active Process Builders |
+| `workflow_rules` | Workflow Rules per object (count can include inactive rules) |
+| `duplicate_records` | Account/Contact/Lead with no active duplicate rule; exact-match duplicate Account names and Contact/Lead emails |
+| `old_api_versions` | Apex more than ~15 releases behind the org's API version |
+| `visualforce_pages` | Unmanaged Visualforce pages |
+
+**Not covered yet:** unused fields, synchronous logic that should be async. If asked, say the scan doesn't check these yet. You can still look at a specific object or class on request.
+
+## Presenting results
+
+Lead with the score and a 2–3 line summary, then a **fix plan**, not a dump of the findings:
+
+1. **Fix now:** high findings (security high-risk settings, coverage under 75%, SOQL/DML in loops, limits at 90%+).
+2. **Plan next:** medium findings, grouped by theme (e.g. "consolidate the Account, Contact and Opportunity triggers", "migrate the 4 Process Builders").
+3. **When you're in there:** low findings.
+
+- Keep the finding numbers (`#3`). They match the saved run, so the user can say "fix #3".
+- Group many similar findings into one line. "14 high-risk security settings" is better than 14 bullets.
+- Respect the response length rules in `00-identity.md`. For a long report, offer `generate_document` with the full list.
+- Duplicate-record examples (names, emails) are customer data. Mention a couple to make it concrete, and don't put them in documents unless the user asks.
+- The heuristic Apex checks can be wrong. Before saying "SOQL in a loop at line 42", read the code (`get_apex_class_body`, sandbox) when you're about to fix it.
+
+## Fixing findings
+
+Offer to fix specific items. Every fix follows the normal rules: lay out the plan, get the user's go-ahead, and the change needs its own permission. Most code and flow fixes are **sandbox-only**. On production, explain the fix and suggest doing it in a sandbox and deploying.
+
+| Finding | How ForceClaw fixes it |
+|---|---|
+| SOQL / DML in loop, hardcoded ID, swallowed exception | Read with `get_apex_class_body` / `get_apex_trigger_body`, rewrite with `update_apex_class` / `update_apex_trigger`, then `run_apex_tests` (sandbox, writeApex). See `03-apex-development.md` for the patterns. |
+| More than one trigger per object | Read every trigger on the object. Propose one trigger plus a handler class that keeps the existing behaviour and order. Build it with `create_apex_class` / `update_apex_trigger`, test it, then retire the old triggers (sandbox, writeApex). |
+| Low or no test coverage | `create_apex_class` for test classes with real assertions, `run_apex_tests`, `get_code_coverage` to confirm (sandbox, writeApex). |
+| Flow without fault paths | `get_flow_definition`, then add fault paths with `update_flow_patch` (sandbox, createFlows). See `02-flow-building.md` → fault paths. |
+| Process Builder / Workflow Rule | Rebuild as a record-triggered flow with `create_flow`, test it, then deactivate the old automation (sandbox, createFlows). Salesforce's Migrate to Flow tool in Setup is an alternative for simple ones. |
+| No active duplicate rule | `list_duplicate_rules`, then `activate_duplicate_rule`. Suggest **alert** first, block later (modifyObjects). |
+| Existing duplicate records | Explain merging (record → Merge, or a dedupe tool for volume). Don't bulk-merge or delete records from chat. |
+| Security settings | No tool changes these. Walk the user through Setup → Health Check → Fix Risks, and flag ones that can lock users out (login IP ranges, session locking, MFA) so they test with a second admin first. |
+| Org limits | Explain what consumes the limit and the options. Nothing to deploy. |
+| Old API versions, Visualforce | Low priority. Bump the API version or rebuild when the component next changes. Don't mass-update. |
+
+After fixing, offer to rerun `run_org_health_check` (or just the relevant check) to confirm the finding is gone.
