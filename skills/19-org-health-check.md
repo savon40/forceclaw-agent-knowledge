@@ -6,11 +6,13 @@ The user asks for a health check, org assessment, org audit or review, tech-debt
 
 ## Run the scan — don't hand-roll it
 
-Call `run_org_health_check`. It runs every check in one go (30–90 seconds), saves the run, and returns numbered findings ordered high → low severity. Don't reproduce it with `query_tooling` or `query_salesforce` calls — you'd hit the turn limit and miss checks.
+Call `run_org_health_check`. It runs every check in one go (30–120 seconds), saves the run, and returns numbered findings ordered high → low severity. Don't reproduce it with `query_tooling` or `query_salesforce` calls — you'd hit the turn limit and miss checks.
 
 - One area only → pass `checks`, e.g. `["security_health_check"]` or `["org_limits"]`.
 - It needs the **Read metadata** permission. On a production org that permission is off until an admin turns it on (the org's page in the ForceClaw dashboard → Agent Permissions). If the tool comes back disabled, say that and stop.
 - It runs as the current user. A user without Setup access, or with limited sharing, gets a partial picture. If checks failed, list them and don't call those areas clean.
+- Checks that count records (`unused_fields`, the duplicate counts in `duplicate_records`) need the **Read data** permission too. Without it they're skipped or partly run, and the result says so under "Partly checked". Pass that on rather than calling those areas clean.
+- Admins can also run it from the org's page in the ForceClaw dashboard (Health check card). Those runs come with an AI-written fix plan and show up in the dashboard alongside chat runs. If someone wants a shareable report or a history of scores, point them there.
 
 What it covers:
 
@@ -20,15 +22,16 @@ What it covers:
 | `org_limits` | Limits from `/limits` at 75%+ of max (90%+ is high) |
 | `test_coverage` | Org-wide coverage under 75% (blocks production deploys), classes with 0% or under 75% |
 | `apex_code_quality` | SOQL in loops, DML in loops, hardcoded record IDs, catch blocks that swallow exceptions (heuristic scan of unmanaged, non-test Apex) |
+| `sync_to_async` | Async jobs queued inside Apex loops (`System.enqueueJob`, `Database.executeBatch`, `@future` calls), slow actions (external services, Apex, emails) in an after-save flow's immediate path, after-save flows updating their own record |
 | `multiple_triggers` | Objects with more than one active trigger |
 | `flow_fault_paths` | Active flows (40 most recently changed) whose DML/action steps have no fault path |
 | `process_builders` | Active Process Builders |
 | `workflow_rules` | Workflow Rules per object (count can include inactive rules) |
-| `duplicate_records` | Account/Contact/Lead with no active duplicate rule; exact-match duplicate Account names and Contact/Lead emails |
+| `duplicate_records` | Account/Contact/Lead with no active duplicate rule; exact-match duplicate Account names and Contact/Lead emails (needs Read data) |
+| `unused_fields` | Custom fields empty on every record (fields over 90 days old, 40 objects with the most custom fields), custom objects with no records (needs Read data) |
 | `old_api_versions` | Apex more than ~15 releases behind the org's API version |
 | `visualforce_pages` | Unmanaged Visualforce pages |
 
-**Not covered yet:** unused fields, synchronous logic that should be async. If asked, say the scan doesn't check these yet. You can still look at a specific object or class on request.
 
 ## Presenting results
 
@@ -54,6 +57,10 @@ Offer to fix specific items. Every fix follows the normal rules: lay out the pla
 | More than one trigger per object | Read every trigger on the object. Propose one trigger plus a handler class that keeps the existing behaviour and order. Build it with `create_apex_class` / `update_apex_trigger`, test it, then retire the old triggers (sandbox, writeApex). |
 | Low or no test coverage | `create_apex_class` for test classes with real assertions, `run_apex_tests`, `get_code_coverage` to confirm (sandbox, writeApex). |
 | Flow without fault paths | `get_flow_definition`, then add fault paths with `update_flow_patch` (sandbox, createFlows). See `02-flow-building.md` → fault paths. |
+| Async job started in an Apex loop | Rewrite so the loop collects IDs and one Queueable (taking a `List<Id>`) runs after it: `update_apex_class`, then `run_apex_tests` (sandbox, writeApex). |
+| Slow action in an after-save flow | Move the action onto a "Run Asynchronously" path on the Start element: `get_flow_definition`, then `update_flow` (sandbox, createFlows). Test that nothing later in the flow depended on it finishing first. |
+| After-save flow updating its own record | Move those field assignments into a before-save flow on the same object (`create_flow`), then remove the update element from the after-save flow (sandbox, createFlows). |
+| Unused custom field / empty custom object | **Never delete straight from the scan.** Check references with `get_component_dependencies`, confirm with the user that nobody needs it (and that the count isn't low only because the user can't see every record), then `delete_custom_field` (sandbox, createFields). Deleted fields can be restored for 15 days. |
 | Process Builder / Workflow Rule | Rebuild as a record-triggered flow with `create_flow`, test it, then deactivate the old automation (sandbox, createFlows). Salesforce's Migrate to Flow tool in Setup is an alternative for simple ones. |
 | No active duplicate rule | `list_duplicate_rules`, then `activate_duplicate_rule`. Suggest **alert** first, block later (modifyObjects). |
 | Existing duplicate records | Explain merging (record → Merge, or a dedupe tool for volume). Don't bulk-merge or delete records from chat. |
