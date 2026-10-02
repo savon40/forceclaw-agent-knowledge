@@ -23,7 +23,8 @@ What it covers:
 | Check id | Finds |
 |---|---|
 | `security_health_check` | Setup → Health Check score, each high-risk setting, medium-risk settings |
-| `access_risk` | What public-site guest profiles can reach (edit/delete = high, read on CRM objects = medium). With Read data: too many people with Modify All Data, non-admins with View All Data or Manage Users, admins who haven't logged in for 90+ days (integration users not counted) |
+| `guest_access` | What public-site guest profiles can reach (edit/delete = high, read on CRM objects = medium) |
+| `admin_access` | Too many people with Modify All Data, non-admins with View All Data or Manage Users, admins who haven't logged in for 90+ days (integration users not counted). Production orgs only — sandbox users are copies, so it's skipped there; needs Read data |
 | `org_limits` | Limits from `/limits` at 75%+ of max (90%+ is high) |
 | `license_waste` | Paid licenses (Salesforce, Salesforce Platform) held by people who haven't logged in for 90+ days or by frozen users, and purchased licenses nobody is assigned to — with a monthly/yearly cost estimate from **Salesforce's public list prices**. Production orgs only; needs Read data |
 | `test_coverage` | Org-wide coverage under 75% (blocks production deploys), classes with 0% or under 75% |
