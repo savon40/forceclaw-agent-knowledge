@@ -25,13 +25,24 @@ When a user asks *"I built it / deployed it / activated it, why isn't it showing
 - `create_flexipage` — create a new Lightning record page for an object from the standard record-page template (created **inactive**; activate separately). Optionally seed a Dynamic Forms field section in the main region in the same call.
 - `update_flexipage` — modify an existing Lightning record page. Actions:
   - `read` — return the page structure (regions, components, field sections and their fields). **Always `read` first** before any write so you target real region names.
-  - `add_component` / `remove_component` — add or remove an LWC / standard component in a region.
-  - `add_field_section` / `remove_field_section` — add or remove a Dynamic Forms field section (facet-based; supports multiple columns).
+  - `add_component` / `remove_component` — add or remove an LWC / standard component in a region. `add_component` goes to the top of the region unless you pass `position` or `after_identifier`.
+  - `move_component` — reposition an existing component, **including a Dynamic Forms field section**, within its region or into another one. Needs `position` or `after_identifier`.
+  - `add_field_section` / `remove_field_section` — add or remove a Dynamic Forms field section (facet-based; supports multiple columns). `add_field_section` goes to the end of the region unless you pass `position` or `after_identifier`.
   - `add_field` / `remove_field` — add or remove a field within a Dynamic Forms field section.
   - `set_visibility` — attach component visibility rules (filters).
 - `activate_flexipage` — assign a FlexiPage as the default for an object (per app, and/or per profile / record type / form factor).
 
 When the user asks for a FlexiPage write, **`read` the page first** to see its real regions and sections, then make the requested change with the tool above. Pass field **API names** (e.g. `Billing_Contact__c`), not labels. After a successful write, offer to commit to Git via `retrieve_metadata` + `commit_and_open_pr`. Do not deploy a payload that hasn't been requested.
+
+### Placing and reordering components and sections
+
+Components render in the `[index]` order that `read` shows for each region. You can put a new component or section at an exact spot, and move an existing one — **never send the user to Lightning App Builder to reorder a page.**
+
+- **`after_identifier`** — place the item directly after the component with that identifier (taken from `read`). This is the right choice for "put X under Y". The item lands in **Y's region, wherever Y lives**, so you don't have to work out the region yourself; it overrides both `position` and `region_name`. (`add_component` / `add_field_section` still require a `region_name` that exists on the page — pass a real one such as `main`; the anchor decides where the item actually goes.)
+- **`position`** — zero-based index among the region's components; `-1` (or anything past the end) means the end. For `move_component` the index counts the destination region's components with the moved one already taken out.
+- **`move_component`** — target the component by `identifier`. `component_name` works as a fallback, but several components can share a name (every field section is `flexipage:fieldSection`) and the first match is the one that moves. `region_name` is optional: it names the destination region and defaults to the component's current region.
+
+**Field sections usually live inside a tab, not in `main`.** On a standard record page the existing sections sit in the Details tab's facet region (e.g. `detailTabContent`), while `main` holds the tabset itself. A section added to `main` therefore renders outside the tabs. To put a new section next to the existing ones, pass `after_identifier` with an existing section's identifier on `add_field_section` — or, if the section already exists in the wrong place, fix it with `move_component` + `after_identifier`.
 
 **Remaining gap:** a true org-wide default with no app override (unreliable Metadata API support) — everything else above is built.
 
