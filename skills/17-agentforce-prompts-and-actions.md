@@ -15,6 +15,7 @@ Building or reviewing the pieces an Agentforce agent calls: **prompt templates**
 | Activate an existing prompt template (sandbox) | `activate_prompt_template` (latest version, or a given `version`) |
 | **Change an existing prompt template** | **Not available yet.** Give the user the new prompt text to paste into Prompt Builder. |
 | Create a Prompt Flow (sandbox) | `create_flow` with `flow_xml` (processType `PromptFlow`), `activate: true` — see Prompt Flows below. Build the flow **before** the template that uses it. |
+| Let the agent's user run the Apex / Flows behind its actions | `update_permission_set_apex_and_flow_access` on a permission set assigned to that user — see "Access for the agent's user" below |
 
 ## Prompt templates (`GenAiPromptTemplate`)
 
@@ -164,6 +165,15 @@ Rules: exactly one `@InvocableMethod`; bulk-safe (list in, list out, one query f
 - Input/output variables must be marked `isInput` / `isOutput`, with clear names and descriptions (the agent sees them).
 - Return an output even on failure (e.g. an empty string plus an error text output) rather than faulting.
 - Keep them small and single-purpose; deterministic helpers (e.g. classify an object type from a record Id prefix) are ideal.
+
+## Access for the agent's user
+
+An action only works if the user the agent runs as can run what backs it. Employee agents run as the person chatting; customer-facing (service) agents run as the agent's own user. That user needs:
+
+- **Apex Class Access** to every class behind an `apex://` action, and **Flow Access** to any flow that restricts access — grant both with `update_permission_set_apex_and_flow_access` on a permission set assigned to that user (`assign_permission_set`).
+- Object and field access to whatever the Apex / Flow reads or writes (`update_permission_set_object_permissions`, `update_permission_set_field_permissions`).
+
+Do this after building the Apex / Flows and before testing the agent. A test failure where the action ran but returned an access error ("insufficient access", "no access to Apex class") means this step is missing — not a script bug.
 
 ## Writing action descriptions (agent-facing)
 
