@@ -98,7 +98,7 @@ Required:
 - `field_mapping`
 - `external_id_field` — the name of the field to match on. Must be either `Id` (for matching by Salesforce Id) or a field marked as "External Id" on the target object.
 
-**Important:** not every field can be used as an external id. For example, `Email` on Contact is NOT marked as External Id by default — you'd have to flag it in Setup first, or upsert by `Id` instead. If the user wants to upsert by a field that isn't marked External Id, tell them they need to either (a) mark that field as External Id in Setup first, or (b) query Salesforce to resolve matches client-side and use update/insert separately.
+**Important:** not every field can be used as an external id. For example, `Email` on Contact is NOT marked as External Id by default — you'd have to flag it in Setup first, or upsert by `Id` instead. If the user wants to upsert by a field that isn't marked External Id: for a custom Text, Number or Email field, offer to flag it with `update_custom_field` (`external_id: true`, usually with `unique: true`) and then upsert. Standard fields like Contact.Email can't be flagged, so either upsert by `Id` or query Salesforce to resolve matches client-side and use update/insert separately.
 
 ### delete
 
