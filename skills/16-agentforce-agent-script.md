@@ -117,7 +117,7 @@ subagent case_summary:     # one per job the agent does
 - `currentRecordId` with `visibility: "External"` is how the agent receives the record the user is looking at.
 - Older scripts use `topic <name>:` instead of `subagent <name>:` — read both, **write `subagent`**.
 - `config.developer_name` is the agent's API name — `deploy_agent_script` publishes under it. **Never end it in `_<number>`** (`FC_Case_Desk_3`): Salesforce saves each version's script as `<Agent>_<version>`, so that name collides with version 3 of `FC_Case_Desk`. Use `FC_Case_Desk_V3` or a real word.
-- `recommended_prompts.starter_prompts` must have **at least 3** entries, or Salesforce won't compile the script.
+- `recommended_prompts.starter_prompts` must have **at least 3** entries, or Salesforce won't compile the script. `recommended_prompts` is for **employee agents only** — a Service agent (`SvcCopilotTmpl__AgentforceServiceAgent`) fails to compile with it ("only supported for AgentforceEmployeeAgent"), so leave the whole block out.
 
 ### What Agentforce Builder adds (match these when writing a new agent)
 
